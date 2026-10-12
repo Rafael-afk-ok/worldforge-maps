@@ -84,6 +84,10 @@ export default function MapApp() {
   const [isMobileDevice, setIsMobileDevice] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewerTab, setViewerTab] = useState<"nations" | "locations" | "diplomacy" | "compare" | "layers">("nations");
+  const [viewerReferenceNationId, setViewerReferenceNationId] = useState("");
+  const [viewerNationFilter, setViewerNationFilter] = useState<"todas" | "propria" | "amigavel" | "neutra" | "inimigas" | "alianças" | "guerras">("todas");
+  const [viewerNationSearch, setViewerNationSearch] = useState("");
+  const [viewerLocationSearch, setViewerLocationSearch] = useState("");
   const [flagUrl, setFlagUrl] = useState("");
   const [markerPhotoUrl, setMarkerPhotoUrl] = useState("");
   const [mapName, setMapName] = useState("Meu mundo");
@@ -156,6 +160,7 @@ export default function MapApp() {
       if (stored && typeof stored["mapName"] === "string") setMapName(stored["mapName"]);
       if (stored && typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]);
       setData(initial);
+      setViewerReferenceNationId(initial.playerNationId ?? "");
       historyRef.current = [initial];
       historyIndexRef.current = 0;
       updateHistoryState();
@@ -310,6 +315,7 @@ export default function MapApp() {
       const nationId = cellKey ? data.tiles[cellKey] : undefined;
       const nation = nationId ? nationById(nationId) : undefined;
       setSel(nation ? { kind: "nation", id: nation.id } : null);
+      if (nation) setViewerReferenceNationId(nation.id);
       return;
     }
     if (e.button === 1 || e.button === 2 || tool === "mover") {
@@ -508,7 +514,7 @@ export default function MapApp() {
       const next = readMap(parsed["map"] ?? parsed);
       const meta = parsed["metadata"] as { name?: string; description?: string } | undefined;
       if (mode === "home" || mode === "view" || pendingViewer) {
-        setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
+        setData(next); setViewerReferenceNationId(next.playerNationId ?? ""); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
         setSel(null); setBrush(null); setDraft([]); setFilter("todas"); setTool("mover"); setMode("view"); setPendingViewer(false); setNotice(t.imported); window.setTimeout(fitMap, 0); return;
       }
       setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap(); setNotice(t.imported); } }); return;
@@ -548,6 +554,21 @@ export default function MapApp() {
   const wars = data.wars ?? [];
   const focusedNation = sel?.kind === "nation" ? data.nations.find(n => n.id === sel.id) : undefined;
   const relationToPlayer = (nation: Nation): Relation => nation.id === data.playerNationId ? "propria" : nation.relations?.[data.playerNationId ?? ""] ?? nation.relation;
+  const viewerReferenceId = viewerReferenceNationId || data.playerNationId || "";
+  const relationToViewerReference = (nation: Nation): Relation => !viewerReferenceId ? nation.relation : nation.id === viewerReferenceId ? "propria" : nation.relations?.[viewerReferenceId] ?? nation.relation;
+  const viewerVisibleNations = data.nations.filter(n => {
+    const q = viewerNationSearch.trim().toLocaleLowerCase();
+    if (q && !n.name.toLocaleLowerCase().includes(q) && !(n.ruler ?? "").toLocaleLowerCase().includes(q)) return false;
+    if (viewerNationFilter === "todas") return true;
+    if (viewerNationFilter === "alianças") return alliances.some(a => a.nationIds.includes(n.id));
+    if (viewerNationFilter === "guerras") return wars.some(w => w.active && [...w.attackers, ...w.defenders].includes(n.id));
+    if (viewerNationFilter === "inimigas") return relationToViewerReference(n) === "inimiga" || (n.enemyIds ?? []).includes(viewerReferenceId) || data.nations.some(other => other.id === viewerReferenceId && (other.enemyIds ?? []).includes(n.id));
+    return relationToViewerReference(n) === viewerNationFilter;
+  });
+  const viewerVisibleLocations = data.markers.filter(m => {
+    const q = viewerLocationSearch.trim().toLocaleLowerCase();
+    return !q || m.name.toLocaleLowerCase().includes(q) || m.notes.toLocaleLowerCase().includes(q) || (m.production ?? "").toLocaleLowerCase().includes(q);
+  });
   const visibleNations = data.nations.filter(n => {
     if (filter === "todas") return true;
     if (filter === "alianças") return alliances.some(a => a.nationIds.includes(n.id));
@@ -598,7 +619,7 @@ export default function MapApp() {
   );
 
   return (
-    <div ref={appRef} className={`atlas-app relative flex w-full overflow-hidden ${activeHomeTheme.background} ${activeHomeTheme.foreground} ${fullscreen ? "atlas-fullscreen" : ""}`}>
+    <div ref={appRef} className={`atlas-app relative flex w-full overflow-hidden ${activeHomeTheme.background} ${activeHomeTheme.foreground} ${fullscreen ? "atlas-fullscreen" : ""}`} data-theme={homeTheme}>
       {isMobileDevice && orientationPortrait && !languageSetup && <div className="absolute inset-0 z-[200] flex items-center justify-center bg-background p-6 text-center"><div className="max-w-sm"><Smartphone className="mx-auto mb-4 h-12 w-12" /><h2 className="font-display text-2xl">{lang === "pt" ? "Gire o celular" : lang === "es" ? "Gira el móvil" : "Rotate your phone"}</h2><p className="mt-2 text-sm text-muted-foreground">{lang === "pt" ? "O WorldForge Maps funciona no celular apenas na orientação horizontal. Gire o aparelho para continuar." : lang === "es" ? "WorldForge Maps en móviles solo funciona en orientación horizontal. Gira el dispositivo para continuar." : "WorldForge Maps on phones only works in landscape orientation. Rotate your device to continue."}</p><Button className="mt-4" onClick={() => void enterFullscreen(true)}>{lang === "pt" ? "Ativar paisagem" : lang === "es" ? "Activar horizontal" : "Enable landscape"}</Button></div></div>}
       {languageSetup && <div className="fixed inset-0 z-[300] flex items-center justify-center bg-background p-6"><div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-xl"><h2 className="font-display text-2xl font-semibold">{lang === "pt" ? "Escolha seu idioma" : lang === "es" ? "Elige tu idioma" : "Choose your language"}</h2><p className="mt-2 text-sm text-muted-foreground">{lang === "pt" ? "Selecione o idioma para usar o WorldForge Maps. Você poderá alterá-lo nas configurações." : lang === "es" ? "Selecciona el idioma de WorldForge Maps. Podrás cambiarlo en la configuración." : "Select the language for WorldForge Maps. You can change it later in Settings."}</p><div className="mt-5 grid gap-2">{LANGS.map(option => <Button key={option.id} variant={lang === option.id ? "default" : "outline"} className="w-full" onClick={() => setLang(option.id)}>{option.label}</Button>)}</div><Button className="mt-4 w-full" onClick={() => { localStorage.setItem("atlas-lang", lang); setLanguageSetup(false); }}>{lang === "pt" ? "Continuar" : lang === "es" ? "Continuar" : "Continue"}</Button></div></div>}
       <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
@@ -610,14 +631,30 @@ export default function MapApp() {
           <div><p className="opacity-70">{tx("População", "Population", "Población")}</p><strong>{worldStats.population.toLocaleString(lang === "pt" ? "pt-BR" : lang === "es" ? "es-ES" : "en-US")}</strong></div>
           <div><p className="opacity-70">{tx("Saldo econômico", "Economic balance", "Balance económico")}</p><strong className={worldBalance < 0 ? "text-destructive" : "text-emerald-600"}>{worldBalance.toLocaleString(lang === "pt" ? "pt-BR" : lang === "es" ? "es-ES" : "en-US")}</strong></div>
         </div>
+        <label className="label">{tx("País de referência diplomática", "Diplomatic reference country", "País de referencia diplomática")}
+          <select className="field mt-1" value={viewerReferenceId} onChange={e => setViewerReferenceNationId(e.target.value)}>
+            <option value="">{tx("Usar relação padrão do mapa", "Use map default relation", "Usar relación predeterminada del mapa")}</option>
+            {data.nations.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+          </select>
+        </label>
         <div className="grid grid-cols-2 gap-1" role="tablist" aria-label={tx("Abas de informações", "Information tabs", "Pestañas de información")}>
           {([{id:"nations",label:tx("Nações","Nations","Naciones")},{id:"locations",label:tx("Localidades","Locations","Localidades")},{id:"diplomacy",label:tx("Diplomacia","Diplomacy","Diplomacia")},{id:"compare",label:tx("Comparação","Comparison","Comparación")},{id:"layers",label:tx("Camadas visíveis","Visible layers","Capas visibles")}] as const).map(tab => <Button key={tab.id} role="tab" aria-selected={viewerTab === tab.id} variant={viewerTab === tab.id ? "default" : "outline"} size="sm" className="h-auto min-h-9 whitespace-normal px-2 py-2 text-xs" onClick={() => setViewerTab(tab.id)}>{tab.label}</Button>)}
         </div>
         {viewerTab === "nations" && <section className="grid gap-3" role="tabpanel">
           <h3 className="font-semibold">{tx("Relações e governo","Relations and government","Relaciones y gobierno")}</h3>
-          {data.nations.length ? data.nations.map(n => <button key={n.id} onClick={() => setSel({kind:"nation",id:n.id})} className={`rounded-lg border p-3 text-left ${selNation?.id === n.id ? "border-primary bg-accent/50" : "border-current/15 hover:bg-accent/30"}`}>
+          <input className="field" value={viewerNationSearch} onChange={e => setViewerNationSearch(e.target.value)} placeholder={tx("Buscar país ou governante...", "Search nation or ruler...", "Buscar país o gobernante...")} />
+          <select className="field" value={viewerNationFilter} onChange={e => setViewerNationFilter(e.target.value as typeof viewerNationFilter)} aria-label={tx("Filtrar países", "Filter nations", "Filtrar países")}>
+            <option value="todas">{tx("Todos os países", "All nations", "Todos los países")}</option>
+            <option value="propria">{tx("País de referência", "Reference country", "País de referencia")}</option>
+            <option value="amigavel">{tx("Amigáveis", "Friendly", "Amistosos")}</option>
+            <option value="neutra">{tx("Neutros", "Neutral", "Neutrales")}</option>
+            <option value="inimigas">{tx("Inimigos", "Enemies", "Enemigos")}</option>
+            <option value="alianças">{tx("Alianças formais", "Formal alliances", "Alianzas formales")}</option>
+            <option value="guerras">{tx("Guerras ativas", "Active wars", "Guerras activas")}</option>
+          </select>
+          {viewerVisibleNations.length ? viewerVisibleNations.map(n => <button key={n.id} onClick={() => { setSel({kind:"nation",id:n.id}); setViewerReferenceNationId(n.id); }} className={`rounded-lg border p-3 text-left ${selNation?.id === n.id ? "border-primary bg-accent/50" : "border-current/15 hover:bg-accent/30"}`}>
             <div className="flex items-center gap-2">{n.flag ? <img src={n.flag} alt={tx("Bandeira de","Flag of","Bandera de")+" "+n.name} className="h-7 w-10 shrink-0 rounded border object-contain" /> : <span className="h-4 w-4 shrink-0 rounded-sm" style={{background:n.color}}/>}<strong className="min-w-0 flex-1 truncate">{n.name}</strong></div>
-            <p className="mt-2 text-xs">{t.relation}: <span className={`rel-${relationToPlayer(n)}`}>{REL[relationToPlayer(n)]}</span></p>
+            <p className="mt-2 text-xs">{t.relation}: <span className={`rel-${relationToPlayer(n)}`}>{REL[relationToViewerReference(n)]}</span></p>
             {n.ruler && <p className="mt-1 text-sm">{tx("Governante:","Ruler:","Gobernante:")} {n.ruler}</p>}
             {n.overlordId && <p className="mt-1 text-sm">{tx("Suserano:","Overlord:","Señor:")} {nationById(n.overlordId)?.name ?? "—"}</p>}
             {n.treaties && <p className="mt-2 whitespace-pre-wrap text-sm">{n.treaties}</p>}
@@ -627,7 +664,8 @@ export default function MapApp() {
         </section>}
         {viewerTab === "locations" && <section className="grid gap-3" role="tabpanel">
           <h3 className="font-semibold">{tx("População, economia, notas e fotos","Population, economy, notes and photos","Población, economía, notas y fotos")}</h3>
-          {data.markers.length ? data.markers.map(m => <button key={m.id} onClick={() => setSel({kind:"marker",id:m.id})} className={`rounded-lg border p-3 text-left ${selMarker?.id === m.id ? "border-primary bg-accent/50" : "border-current/15 hover:bg-accent/30"}`}>
+          <input className="field" value={viewerLocationSearch} onChange={e => setViewerLocationSearch(e.target.value)} placeholder={tx("Buscar localidade...", "Search location...", "Buscar localidad...")} />
+          {viewerVisibleLocations.length ? viewerVisibleLocations.map(m => <button key={m.id} onClick={() => setSel({kind:"marker",id:m.id})} className={`rounded-lg border p-3 text-left ${selMarker?.id === m.id ? "border-primary bg-accent/50" : "border-current/15 hover:bg-accent/30"}`}>
             <div className="flex items-start gap-3">{m.photo && <img src={m.photo} alt={tx("Foto de","Photo of","Foto de")+" "+m.name} className="h-20 w-24 shrink-0 rounded border object-cover" />}<div className="min-w-0"><strong>{m.name}</strong><p className="text-xs opacity-70">{t[`m_${m.type}`]}</p><p className="mt-1 text-sm">{tx("População:","Population:","Población:")} {(m.npcs??0).toLocaleString(lang === "pt" ? "pt-BR" : lang === "es" ? "es-ES" : "en-US")}</p><p className="text-sm">{tx("Saldo:","Balance:","Balance:")} {((m.grossIncome??0)-(m.expenses??0)).toLocaleString(lang === "pt" ? "pt-BR" : lang === "es" ? "es-ES" : "en-US")}</p></div></div>
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><span>{tx("Receita:","Income:","Ingresos:")} {(m.grossIncome??0).toLocaleString()}</span><span>{tx("Gastos:","Expenses:","Gastos:")} {(m.expenses??0).toLocaleString()}</span><span>{tx("Produção alimentar:","Food production:","Producción alimentaria:")} {m.foodProduction??0}</span><span>{tx("Consumo alimentar:","Food consumption:","Consumo alimentario:")} {m.foodConsumption??0}</span></div>
             {m.production && <p className="mt-2 text-sm">{tx("Produção:","Production:","Producción:")} {m.production}</p>}
@@ -783,20 +821,17 @@ export default function MapApp() {
         </svg>
 
         <div className="map-toolbar" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
-          {mode === "view" && <><Button variant="ghost" size="icon" aria-label={t.zoomOut} title={t.zoomOut} onClick={() => zoom(0.8)}><Minus /></Button><Button variant="ghost" size="icon" aria-label={t.zoomIn} title={t.zoomIn} onClick={() => zoom(1.25)}><Plus /></Button><Button variant="ghost" size="icon" aria-label={t.settings} title={t.settings} onClick={() => setSettingsOpen(v => !v)}><Settings /></Button><Button variant="ghost" size="icon" aria-label={tx("Voltar ao início", "Back to home", "Volver al inicio")} title={tx("Voltar ao início", "Back to home", "Volver al inicio")} onClick={() => setMode("home")}><X /></Button></>}
+          {mode === "view" && <><Button variant="ghost" size="icon" aria-label={t.settings} title={t.settings} onClick={() => setSettingsOpen(v => !v)}><Settings /></Button><Button variant="ghost" size="icon" aria-label={tx("Voltar ao início", "Back to home", "Volver al inicio")} title={tx("Voltar ao início", "Back to home", "Volver al inicio")} onClick={() => setMode("home")}><X /></Button></>}
           {mode === "edit" && <>
           <Button variant="ghost" size="icon" aria-label={tx("Alternar para visualização", "Switch to view mode", "Cambiar a visualización")} title={tx("Alternar para visualização", "Switch to view mode", "Cambiar a visualización")} onClick={() => { setSel(null); setPanelOpen(false); setMode("view"); }}><Eye /></Button>
           <Button variant="ghost" size="icon" className="min-[901px]:hidden" aria-label={t.tools} title={t.tools} onClick={() => setPanelOpen(v => !v)}><Menu /></Button>
           <Button variant="ghost" size="icon" disabled={!canUndo} aria-label={t.undo} title={t.undo} onClick={handleUndo}><Undo className="h-4 w-4" /></Button>
           <Button variant="ghost" size="icon" disabled={!canRedo} aria-label={t.redo} title={t.redo} onClick={handleRedo}><Redo className="h-4 w-4" /></Button>
-          <Button variant="ghost" size="icon" aria-label={t.zoomOut} title={t.zoomOut} onClick={() => zoom(0.8)}><Minus /></Button>
-          <Button variant="ghost" size="icon" aria-label={t.zoomIn} title={t.zoomIn} onClick={() => zoom(1.25)}><Plus /></Button>
           <Button variant="ghost" size="icon" aria-label={fullscreen ? t.exitFullscreen : t.fullscreen} title={fullscreen ? t.exitFullscreen : t.fullscreen} onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize /> : <Maximize />}</Button>
           <Button variant="ghost" size="icon" aria-label={tx("Status do mundo", "World status", "Estado del mundo")} title={tx("Status do mundo", "World status", "Estado del mundo")} onClick={() => setDialog({ type: "status" })}><BarChart3 /></Button>
           <Button variant="ghost" size="icon" aria-label={tx("Comparar países e cidades", "Compare nations and cities", "Comparar países y ciudades")} title={tx("Comparar países e cidades", "Compare nations and cities", "Comparar países y ciudades")} onClick={() => setDialog({ type: "compare" })}><GitCompareArrows /></Button>
           <Button variant="ghost" size="icon" aria-label={tx("Editor diplomático", "Diplomacy editor", "Editor diplomático")} title={tx("Editor diplomático", "Diplomacy editor", "Editor diplomático")} onClick={() => { setDiplomacyExpanded([]); setDialog({ type: "diplomacy" }); }}><Users /></Button>
           <Button variant="ghost" size="icon" aria-label={tx("Exportar mapa em PNG", "Export map as PNG", "Exportar mapa como PNG")} title={tx("Exportar mapa em PNG", "Export map as PNG", "Exportar mapa como PNG")} onClick={exportPng}><Download /></Button>
-          <Button variant="ghost" size="icon" aria-label={tx("Atualizações e logs", "Updates and logs", "Actualizaciones y registros")} title={tx("Atualizações e logs", "Updates and logs", "Actualizaciones y registros")} onClick={() => setDialog({ type: "updates" })}><ClipboardList /></Button>
           <Button variant="ghost" size="icon" aria-label={t.settings} title={t.settings} onClick={() => setSettingsOpen(v => !v)}><Settings /></Button></>}
         </div>
         <div className="pointer-events-none absolute bottom-3 left-3 rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground">{Math.round(view.z * 100)}% · {t[tool]}</div>
