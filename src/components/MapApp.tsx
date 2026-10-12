@@ -513,7 +513,7 @@ export default function MapApp() {
             <div><label className="label">{t.treaties}</label><textarea rows={4} value={selNation.treaties} onChange={e => upNation(selNation.id, { treaties: e.target.value })} className="field" /></div>
             <div><label className="label">{t.notes}</label><textarea rows={6} value={selNation.notes} onChange={e => upNation(selNation.id, { notes: e.target.value })} className="field" /></div>
             <Button onClick={() => { setBrush(selNation.id); setTool("pintar"); setSel(null); setPanelOpen(false); }} className="h-auto whitespace-normal rounded bg-primary px-2 py-2 text-sm text-primary-foreground">{t.paintThis}</Button>
-            <Button variant="ghost" onClick={() => { if (!confirm(t.confirmDeleteNation)) return; setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)) })); setSel(null); }} className="text-sm text-destructive">{t.deleteNation}</Button>
+            <Button variant="ghost" onClick={() => { if (!confirm(t.confirmDeleteNation)) return; setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id).map(n => n.overlordId === selNation.id ? { ...n, overlordId: undefined } : n), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)), regions: d.regions.filter(r => r.nationId !== selNation.id) })); setSel(null); }} className="text-sm text-destructive">{t.deleteNation}</Button>
           </div>}
 
           {/* Detalhes expandidos para Cidades, Capitais, Fortes e Portos */}
