@@ -168,3 +168,93 @@ body { font-family: var(--font-sans); font-size: 18px; }
   .map-tools-panel.panel-closed { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+
+/* WorldForge themes override the semantic colors used by buttons, fields, cards and dialogs. */
+.atlas-app[data-theme="midnight"] {
+  --background: oklch(0.13 0.025 260);
+  --foreground: oklch(0.96 0.01 250);
+  --card: oklch(0.19 0.025 260);
+  --card-foreground: oklch(0.96 0.01 250);
+  --popover: oklch(0.19 0.025 260);
+  --popover-foreground: oklch(0.96 0.01 250);
+  --primary: oklch(0.78 0.13 205);
+  --primary-foreground: oklch(0.17 0.03 255);
+  --secondary: oklch(0.25 0.025 260);
+  --secondary-foreground: oklch(0.94 0.01 250);
+  --muted: oklch(0.24 0.025 260);
+  --muted-foreground: oklch(0.76 0.02 250);
+  --accent: oklch(0.28 0.04 235);
+  --accent-foreground: oklch(0.96 0.01 250);
+  --border: oklch(0.36 0.025 260);
+  --input: oklch(0.25 0.025 260);
+  --ring: oklch(0.72 0.12 205);
+}
+.atlas-app[data-theme="parchment"] {
+  --background: oklch(0.95 0.045 85);
+  --foreground: oklch(0.28 0.055 65);
+  --card: oklch(0.98 0.035 85);
+  --card-foreground: oklch(0.28 0.055 65);
+  --popover: oklch(0.98 0.035 85);
+  --popover-foreground: oklch(0.28 0.055 65);
+  --primary: oklch(0.48 0.09 55);
+  --primary-foreground: oklch(0.98 0.025 85);
+  --secondary: oklch(0.91 0.045 80);
+  --secondary-foreground: oklch(0.32 0.05 65);
+  --muted: oklch(0.91 0.04 80);
+  --muted-foreground: oklch(0.46 0.045 65);
+  --accent: oklch(0.89 0.07 75);
+  --accent-foreground: oklch(0.28 0.055 65);
+  --border: oklch(0.79 0.055 75);
+  --input: oklch(0.96 0.035 85);
+  --ring: oklch(0.58 0.1 55);
+}
+.atlas-app[data-theme="ocean"] {
+  --background: oklch(0.16 0.055 245);
+  --foreground: oklch(0.96 0.025 220);
+  --card: oklch(0.22 0.06 245);
+  --card-foreground: oklch(0.96 0.025 220);
+  --popover: oklch(0.22 0.06 245);
+  --popover-foreground: oklch(0.96 0.025 220);
+  --primary: oklch(0.79 0.12 205);
+  --primary-foreground: oklch(0.18 0.05 245);
+  --secondary: oklch(0.27 0.055 245);
+  --secondary-foreground: oklch(0.94 0.025 220);
+  --muted: oklch(0.25 0.05 245);
+  --muted-foreground: oklch(0.78 0.04 220);
+  --accent: oklch(0.3 0.07 225);
+  --accent-foreground: oklch(0.96 0.025 220);
+  --border: oklch(0.38 0.05 235);
+  --input: oklch(0.25 0.05 245);
+  --ring: oklch(0.75 0.12 205);
+}
+.atlas-app[data-theme="forest"] {
+  --background: oklch(0.16 0.045 150);
+  --foreground: oklch(0.96 0.025 145);
+  --card: oklch(0.22 0.05 150);
+  --card-foreground: oklch(0.96 0.025 145);
+  --popover: oklch(0.22 0.05 150);
+  --popover-foreground: oklch(0.96 0.025 145);
+  --primary: oklch(0.78 0.13 150);
+  --primary-foreground: oklch(0.18 0.04 150);
+  --secondary: oklch(0.27 0.04 150);
+  --secondary-foreground: oklch(0.94 0.025 145);
+  --muted: oklch(0.25 0.04 150);
+  --muted-foreground: oklch(0.77 0.035 145);
+  --accent: oklch(0.3 0.06 150);
+  --accent-foreground: oklch(0.96 0.025 145);
+  --border: oklch(0.38 0.04 150);
+  --input: oklch(0.25 0.04 150);
+  --ring: oklch(0.72 0.12 150);
+}
+.map-toolbar {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  max-width: calc(100% - 16px);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+@media (max-width: 600px) {
+  .map-toolbar { top: 6px; gap: 2px; padding: 2px; }
+}
