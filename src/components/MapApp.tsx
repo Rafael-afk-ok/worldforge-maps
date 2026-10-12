@@ -495,11 +495,6 @@ export default function MapApp() {
         setSel(null); setBrush(null); setDraft([]); setFilter("todas"); setTool("mover"); setMode("view"); setPendingViewer(false); setNotice(t.imported); window.setTimeout(fitMap, 0); return;
       }
       setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap(); setNotice(t.imported); } }); return;
-      const meta = parsed["metadata"] as { name?: string; description?: string } | undefined;
-      setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
-      if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]);
-      setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap();
-      setNotice(t.imported);
     } catch { setNotice(t.invalidFile); }
   };
 
