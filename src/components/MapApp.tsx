@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, ClipboardList, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap } from "lucide-react";
+import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, ClipboardList, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
@@ -46,11 +46,20 @@ const RELS: Relation[] = ["propria", "aliada", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
 const SHAPES: { id: MarkerShape; label: string }[] = [{ id: "circle", label: "Círculo" }, { id: "square", label: "Quadrado" }, { id: "triangle", label: "Triângulo" }, { id: "star", label: "Estrela" }, { id: "diamond", label: "Losango" }, { id: "hexagon", label: "Hexágono" }, { id: "cross", label: "Cruz" }];
 const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "comentario", "capital", "cidade", "forte", "porto", "estrada", "rota"];
+type HomeTheme = "atlas" | "midnight" | "parchment" | "ocean" | "forest";
+const HOME_THEMES: { id: HomeTheme; label: string; background: string; panel: string; foreground: string; muted: string; accent: string; card: string }[] = [
+  { id: "atlas", label: "Atlas", background: "bg-background", panel: "bg-card border-border", foreground: "text-foreground", muted: "text-muted-foreground", accent: "text-primary", card: "border-border hover:bg-accent" },
+  { id: "midnight", label: "Noturno", background: "bg-slate-950", panel: "bg-slate-900 border-slate-700", foreground: "text-slate-100", muted: "text-slate-300", accent: "text-cyan-300", card: "border-slate-700 hover:bg-slate-800" },
+  { id: "parchment", label: "Pergaminho", background: "bg-amber-50", panel: "bg-amber-50 border-amber-300", foreground: "text-amber-950", muted: "text-amber-800", accent: "text-amber-900", card: "border-amber-300 hover:bg-amber-100" },
+  { id: "ocean", label: "Oceano", background: "bg-sky-950", panel: "bg-sky-900 border-sky-700", foreground: "text-sky-50", muted: "text-sky-200", accent: "text-cyan-300", card: "border-sky-700 hover:bg-sky-800" },
+  { id: "forest", label: "Floresta", background: "bg-emerald-950", panel: "bg-emerald-900 border-emerald-700", foreground: "text-emerald-50", muted: "text-emerald-200", accent: "text-emerald-300", card: "border-emerald-700 hover:bg-emerald-800" },
+];
 
 type Sel = { kind: "nation"; id: string } | { kind: "marker"; id: string } | { kind: "line"; id: string } | { kind: "comment"; id: string } | null;
 
 export default function MapApp() {
   const [mode, setMode] = useState<"home" | "edit" | "view">("home");
+  const [homeTheme, setHomeTheme] = useState<HomeTheme>("atlas");
   const [pendingViewer, setPendingViewer] = useState(false);
   const [data, setData] = useState<Data>(empty);
   const [dark, setDark] = useState(false);
@@ -155,6 +164,8 @@ export default function MapApp() {
       setIsMobileDevice(mobileUA || coarseSmallScreen);
       setDeviceMode(localStorage.getItem("worldforge-device-mode") === "celular" ? "celular" : localStorage.getItem("worldforge-device-mode") === "pc" ? "pc" : (mobileUA || coarseSmallScreen) ? "celular" : "pc");
       setDark(localStorage.getItem("atlas-theme") === "dark");
+      const savedHomeTheme = localStorage.getItem("worldforge-home-theme");
+      if (savedHomeTheme && HOME_THEMES.some(theme => theme.id === savedHomeTheme)) setHomeTheme(savedHomeTheme as HomeTheme);
       const l = localStorage.getItem("atlas-lang");
       if (l === "pt" || l === "en" || l === "es") setLang(l);
       else setLanguageSetup(true);
@@ -164,6 +175,7 @@ export default function MapApp() {
     setLoaded(true);
   }, []);
   useEffect(() => { if (loaded) localStorage.setItem("worldforge-device-mode", deviceMode); }, [deviceMode, loaded]);
+  useEffect(() => { if (loaded) localStorage.setItem("worldforge-home-theme", homeTheme); }, [homeTheme, loaded]);
   useEffect(() => { const check = () => setOrientationPortrait(window.innerHeight > window.innerWidth); check(); window.addEventListener("resize", check); window.addEventListener("orientationchange", check); return () => { window.removeEventListener("resize", check); window.removeEventListener("orientationchange", check); }; }, []);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -205,7 +217,7 @@ export default function MapApp() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     const el = ref.current; if (!el) return;
@@ -542,17 +554,31 @@ export default function MapApp() {
     { title: tx("5. Salvar e recuperar", "5. Save and restore", "5. Guardar y recuperar"), body: tx("Salvar mapa exporta um arquivo JSON com os dados e histórico. Importe esse arquivo em outro dispositivo para continuar a edição.", "Save Map exports a JSON file containing the data and history. Import it on another device to continue editing.", "Guardar mapa exporta un archivo JSON con los datos y el historial. Impórtalo en otro dispositivo para seguir editando.") },
   ];
 
+  const activeHomeTheme = HOME_THEMES.find(theme => theme.id === homeTheme) ?? HOME_THEMES[0];
+
   if (mode === "home") return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-6 text-foreground">
-      <div className="w-full max-w-xl rounded-xl border border-border bg-card p-8">
-        <h1 className="font-display text-3xl font-bold text-primary">{t.appName}</h1>
-        <p className="mt-2 text-muted-foreground">{tx("Escolha como deseja usar o mapa.", "Choose how to use the map.", "Elige cómo usar el mapa.")}</p>
-        {languageSetup && <div className="mt-4 flex flex-wrap gap-2">{LANGS.map(option => <Button key={option.id} variant={lang === option.id ? "default" : "outline"} onClick={() => { setLang(option.id); localStorage.setItem("atlas-lang", option.id); setLanguageSetup(false); }}>{option.label}</Button>)}</div>}
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <button className="rounded-lg border border-border p-4 text-left hover:bg-accent" onClick={() => { try { const saved = localStorage.getItem(KEY); if (saved) { const stored = JSON.parse(saved) as Record<string, unknown>; setData(readMap(stored["map"] ?? stored)); if (typeof stored["mapName"] === "string") setMapName(stored["mapName"]); if (typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]); if (Array.isArray(stored["versions"])) setVersions(stored["versions"] as MapVersion[]); } else { setData(empty); setMapName("Meu mundo"); setMapDescription(""); } } catch { setData(empty); } setTool("mover"); setSel(null); setMode("edit"); }}><strong>{tx("Modo de edição", "Editing mode", "Modo de edición")}</strong><p className="mt-2 text-sm text-muted-foreground">{tx("Abrir o editor completo.", "Open the full editor.", "Abrir el editor completo.")}</p></button>
-          <button className="rounded-lg border border-border p-4 text-left hover:bg-accent" onClick={() => { setPendingViewer(true); importRef.current?.click(); }}><strong>{tx("Modo de visualização", "View-only mode", "Modo de visualización")}</strong><p className="mt-2 text-sm text-muted-foreground">{tx("Carregar um mapa JSON exportado pelo editor.", "Load a map JSON exported by the editor.", "Cargar un mapa JSON exportado por el editor.")}</p></button>
+    <div className={`min-h-screen flex items-center justify-center p-4 sm:p-6 ${activeHomeTheme.background} ${activeHomeTheme.foreground} transition-colors`}>
+      <div className={`w-full max-w-2xl rounded-2xl border p-5 shadow-xl sm:p-8 ${activeHomeTheme.panel}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h1 className={`font-display text-3xl font-bold ${activeHomeTheme.accent}`}>{t.appName}</h1>
+            <p className={`mt-2 ${activeHomeTheme.muted}`}>{tx("Escolha como deseja usar o mapa.", "Choose how to use the map.", "Elige cómo usar el mapa.")}</p></div>
+          <div className="flex gap-2">{languageSetup && LANGS.map(option => <Button key={option.id} size="sm" variant={lang === option.id ? "default" : "outline"} onClick={() => { setLang(option.id); localStorage.setItem("atlas-lang", option.id); setLanguageSetup(false); }}>{option.label}</Button>)}</div>
         </div>
-        <p className="mt-4 text-xs text-muted-foreground">{tx("A visualização não salva alterações no mapa.", "View mode does not save changes to the map.", "La visualización no guarda cambios en el mapa.")}</p>
+        <div className="mt-6">
+          <p className={`mb-2 text-xs font-semibold uppercase tracking-wider ${activeHomeTheme.muted}`}>{tx("Tema da tela inicial", "Home screen theme", "Tema de la pantalla inicial")}</p>
+          <div className="flex flex-wrap gap-2">{HOME_THEMES.map(theme => <button type="button" key={theme.id} aria-pressed={homeTheme === theme.id} onClick={() => setHomeTheme(theme.id)} className={`rounded-full border px-3 py-1.5 text-sm transition ${homeTheme === theme.id ? "border-primary ring-2 ring-primary/30" : "border-current/20"} ${theme.id === "midnight" ? "bg-slate-900 text-slate-100" : theme.id === "parchment" ? "bg-amber-100 text-amber-950" : theme.id === "ocean" ? "bg-sky-900 text-sky-100" : theme.id === "forest" ? "bg-emerald-900 text-emerald-100" : "bg-background text-foreground"}`}>{theme.label}</button>)}</div>
+        </div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <button type="button" className={`min-h-32 rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${activeHomeTheme.card}`} onClick={() => { try { const saved = localStorage.getItem(KEY); if (saved) { const stored = JSON.parse(saved) as Record<string, unknown>; setData(readMap(stored["map"] ?? stored)); if (typeof stored["mapName"] === "string") setMapName(stored["mapName"]); if (typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]); if (Array.isArray(stored["versions"])) setVersions(stored["versions"] as MapVersion[]); } else { setData(empty); setMapName("Meu mundo"); setMapDescription(""); } } catch { setData(empty); } setTool("mover"); setSel(null); setPanelOpen(false); setMode("edit"); }}>
+            <span className={`mb-3 inline-flex rounded-lg border border-current/20 p-2 ${activeHomeTheme.accent}`}><Pencil className="h-5 w-5" /></span>
+            <strong className="block">{tx("Modo de edição", "Editing mode", "Modo de edición")}</strong><p className={`mt-2 text-sm ${activeHomeTheme.muted}`}>{tx("Criar, editar e salvar mapas.", "Create, edit and save maps.", "Crear, editar y guardar mapas.")}</p>
+          </button>
+          <button type="button" className={`min-h-32 rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${activeHomeTheme.card}`} onClick={() => { setPendingViewer(true); importRef.current?.click(); }}>
+            <span className={`mb-3 inline-flex rounded-lg border border-current/20 p-2 ${activeHomeTheme.accent}`}><Eye className="h-5 w-5" /></span>
+            <strong className="block">{tx("Modo de visualização", "View-only mode", "Modo de visualización")}</strong><p className={`mt-2 text-sm ${activeHomeTheme.muted}`}>{tx("Abrir um JSON para explorar o mapa sem alterar o original.", "Open a JSON map to explore it without changing the original.", "Abrir un mapa JSON para explorarlo sin cambiar el original.")}</p>
+          </button>
+        </div>
+        <p className={`mt-4 text-xs ${activeHomeTheme.muted}`}>{tx("O tema escolhido fica salvo neste dispositivo. A visualização não grava alterações no mapa.", "Your theme is saved on this device. View mode does not save map changes.", "El tema se guarda en este dispositivo. La vista no guarda cambios en el mapa.")}</p>
       </div>
       <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
     </div>
@@ -563,7 +589,7 @@ export default function MapApp() {
       {isMobileDevice && orientationPortrait && !languageSetup && <div className="absolute inset-0 z-[200] flex items-center justify-center bg-background p-6 text-center"><div className="max-w-sm"><Smartphone className="mx-auto mb-4 h-12 w-12" /><h2 className="font-display text-2xl">{lang === "pt" ? "Gire o celular" : lang === "es" ? "Gira el móvil" : "Rotate your phone"}</h2><p className="mt-2 text-sm text-muted-foreground">{lang === "pt" ? "O WorldForge Maps funciona no celular apenas na orientação horizontal. Gire o aparelho para continuar." : lang === "es" ? "WorldForge Maps en móviles solo funciona en orientación horizontal. Gira el dispositivo para continuar." : "WorldForge Maps on phones only works in landscape orientation. Rotate your device to continue."}</p><Button className="mt-4" onClick={() => void enterFullscreen(true)}>{lang === "pt" ? "Ativar paisagem" : lang === "es" ? "Activar horizontal" : "Enable landscape"}</Button></div></div>}
       {languageSetup && <div className="fixed inset-0 z-[300] flex items-center justify-center bg-background p-6"><div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-xl"><h2 className="font-display text-2xl font-semibold">{lang === "pt" ? "Escolha seu idioma" : lang === "es" ? "Elige tu idioma" : "Choose your language"}</h2><p className="mt-2 text-sm text-muted-foreground">{lang === "pt" ? "Selecione o idioma para usar o WorldForge Maps. Você poderá alterá-lo nas configurações." : lang === "es" ? "Selecciona el idioma de WorldForge Maps. Podrás cambiarlo en la configuración." : "Select the language for WorldForge Maps. You can change it later in Settings."}</p><div className="mt-5 grid gap-2">{LANGS.map(option => <Button key={option.id} variant={lang === option.id ? "default" : "outline"} className="w-full" onClick={() => setLang(option.id)}>{option.label}</Button>)}</div><Button className="mt-4 w-full" onClick={() => { localStorage.setItem("atlas-lang", lang); setLanguageSetup(false); }}>{lang === "pt" ? "Continuar" : lang === "es" ? "Continuar" : "Continue"}</Button></div></div>}
       <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
-      {mode === "view" ? <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-card p-4"><div className="flex items-center justify-between gap-2"><h2 className="font-semibold">{mapName}</h2><Button size="sm" variant="ghost" onClick={() => setMode("home")}>{tx("Sair", "Exit", "Salir")}</Button></div>{mapDescription && <p className="text-sm text-muted-foreground">{mapDescription}</p>}<Button variant="outline" onClick={() => { setPendingViewer(true); importRef.current?.click(); }}>{tx("Carregar outro mapa", "Load another map", "Cargar otro mapa")}</Button><h3 className="font-semibold">{t.nations}</h3>{data.nations.map(n => <button key={n.id} onClick={() => setSel({kind:"nation",id:n.id})} className="flex items-center gap-2 rounded p-2 text-left text-sm hover:bg-accent"><span className="h-3 w-3 rounded-sm" style={{background:n.color}}/>{n.flag && <img src={n.flag} alt="" className="h-5 w-7 object-contain"/>}<span>{n.name}</span></button>)}<h3 className="mt-3 font-semibold">{tx("Cidades e locais", "Cities and locations", "Ciudades y lugares")}</h3>{data.markers.map(m => <button key={m.id} onClick={() => setSel({kind:"marker",id:m.id})} className="rounded p-2 text-left text-sm hover:bg-accent">{m.name}</button>)}<div className="mt-3 rounded border border-border p-3 text-sm">{selNation ? <><h3 className="font-semibold">{selNation.name}</h3><p>{REL[selNation.relation]}</p>{selNation.ruler && <p>{tx("Governante:", "Ruler:", "Gobernante:")} {selNation.ruler}</p>}{selNation.notes && <p className="mt-2 whitespace-pre-wrap">{selNation.notes}</p>}{selNation.treaties && <p className="mt-2 whitespace-pre-wrap">{selNation.treaties}</p>}<p className="mt-2">{tx("Territórios:", "Tiles:", "Territorios:")} {tileCount(selNation.id)}</p></> : selMarker ? <><h3 className="font-semibold">{selMarker.name}</h3><p>{t[`m_${selMarker.type}`]}</p>{selMarker.notes && <p>{selMarker.notes}</p>}<p>{tx("População:", "Population:", "Población:")} {(selMarker.npcs ?? 0).toLocaleString("pt-BR")}</p><p>{tx("Receita:", "Income:", "Ingresos:")} {selMarker.grossIncome ?? 0}</p><p>{tx("Gastos:", "Expenses:", "Gastos:")} {selMarker.expenses ?? 0}</p></> : <p>{tx("Selecione uma nação ou cidade para ver os detalhes.", "Select a nation or city to see details.", "Selecciona una nación o ciudad para ver detalles.")}</p>}</div></aside> : <aside className={`map-tools-panel flex shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-card p-4 ${panelOpen ? "" : "panel-closed"}`}>
+      {mode === "view" ? <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-card p-4"><div className="flex items-center justify-between gap-2"><h2 className="font-semibold">{mapName}</h2><Button size="sm" variant="ghost" onClick={() => setMode("home")}>{tx("Sair", "Exit", "Salir")}</Button></div>{mapDescription && <p className="text-sm text-muted-foreground">{mapDescription}</p>}<Button variant="outline" onClick={() => { setPendingViewer(true); importRef.current?.click(); }}>{tx("Carregar outro mapa", "Load another map", "Cargar otro mapa")}</Button><h3 className="font-semibold">{t.nations}</h3>{data.nations.map(n => <button key={n.id} onClick={() => setSel({kind:"nation",id:n.id})} className="flex items-center gap-2 rounded p-2 text-left text-sm hover:bg-accent"><span className="h-3 w-3 rounded-sm" style={{background:n.color}}/>{n.flag && <img src={n.flag} alt="" className="h-5 w-7 object-contain"/>}<span>{n.name}</span></button>)}<h3 className="mt-3 font-semibold">{tx("Cidades e locais", "Cities and locations", "Ciudades y lugares")}</h3>{data.markers.map(m => <button key={m.id} onClick={() => setSel({kind:"marker",id:m.id})} className="rounded p-2 text-left text-sm hover:bg-accent">{m.name}</button>)}<div className="mt-3 rounded border border-border p-3 text-sm">{selNation ? <><h3 className="font-semibold">{selNation.name}</h3><p>{REL[selNation.relation]}</p>{selNation.ruler && <p>{tx("Governante:", "Ruler:", "Gobernante:")} {selNation.ruler}</p>}{selNation.notes && <p className="mt-2 whitespace-pre-wrap">{selNation.notes}</p>}{selNation.treaties && <p className="mt-2 whitespace-pre-wrap">{selNation.treaties}</p>}<p className="mt-2">{tx("Territórios:", "Tiles:", "Territorios:")} {tileCount(selNation.id)}</p></> : selMarker ? <><h3 className="font-semibold">{selMarker.name}</h3><p>{t[`m_${selMarker.type}`]}</p>{selMarker.notes && <p>{selMarker.notes}</p>}<p>{tx("População:", "Population:", "Población:")} {(selMarker.npcs ?? 0).toLocaleString("pt-BR")}</p><p>{tx("Receita:", "Income:", "Ingresos:")} {selMarker.grossIncome ?? 0}</p><p>{tx("Gastos:", "Expenses:", "Gastos:")} {selMarker.expenses ?? 0}</p></> : <p>{tx("Selecione uma nação ou cidade para ver os detalhes.", "Select a nation or city to see details.", "Selecciona una nación o ciudad para ver detalles.")}</p>}</div></aside> : <aside className={`map-tools-panel flex min-h-0 shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-card p-4 ${panelOpen ? "" : "panel-closed"}`}>
         <div className="flex items-center justify-between gap-2"><h1 className="font-display text-2xl leading-none text-primary">{t.appName}</h1><Button size="icon" variant="ghost" className="min-[901px]:hidden" aria-label={t.close} onClick={() => setPanelOpen(false)}><X /></Button></div>
         <section className="rounded-md border border-border p-2">
           <h2 className="label">{tx("Ações rápidas", "Quick actions", "Acciones rápidas")}</h2>
@@ -609,7 +635,7 @@ export default function MapApp() {
             <div className="mt-2 flex gap-1"><Button variant="outline" size="sm" onClick={() => setData(d => ({ ...d, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, bgOpacity: 0.6 }))}><RotateCcw />{t.reset}</Button><Button variant="ghost" size="icon" aria-label={t.removeBg} title={t.removeBg} className="text-destructive" onClick={() => setData(d => ({ ...d, bg: null }))}><Trash2 /></Button></div>
           </>}
         </section></details>
-        <details className="mt-auto rounded-md border border-border p-2"><summary className="cursor-pointer select-none font-semibold">{tx("Salvar, importar e versões", "Save, import and versions", "Guardar, importar y versiones")}</summary><section className="mt-3 grid gap-1 text-sm">
+        <details className="rounded-md border border-border p-2"><summary className="cursor-pointer select-none font-semibold">{tx("Salvar, importar e versões", "Save, import and versions", "Guardar, importar y versiones")}</summary><section className="mt-3 grid gap-1 text-sm">
           <Button variant="outline" onClick={exportJson} className="rounded border border-border px-2 py-1 hover:bg-accent"><Download />{tx("Salvar mapa / versões", "Save map / versions", "Guardar mapa / versiones")}</Button>
           <Button variant="outline" onClick={exportPng}><Download />{tx("Exportar mapa em PNG", "Export map as PNG", "Exportar mapa como PNG")}</Button>
           <Button variant="outline" onClick={() => { if (!versions.length) { setNotice(tx(tx("Nenhuma versão salva ainda. Salve o mapa para criar a primeira.", "No saved versions yet. Save the map to create the first one.", "Aún no hay versiones guardadas. Guarda el mapa para crear la primera."), "No saved versions yet. Save the map to create the first one.", "Aún no hay versiones guardadas. Guarda el mapa para crear la primera.")); return; } setDialog({ type: "history", selectedId: versions[versions.length - 1]?.id ?? "" }); }}><History className="h-4 w-4" />{tx("Histórico de versões", "Version history", "Historial de versiones")}</Button>
@@ -692,8 +718,9 @@ export default function MapApp() {
         </svg>
 
         <div className="map-toolbar" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
-          {mode === "view" && <><Button variant="ghost" size="icon" aria-label={t.zoomOut} title={t.zoomOut} onClick={() => zoom(0.8)}><Minus /></Button><Button variant="ghost" size="icon" aria-label={t.zoomIn} title={t.zoomIn} onClick={() => zoom(1.25)}><Plus /></Button><Button variant="ghost" size="icon" aria-label={tx("Voltar", "Back", "Volver")} title={tx("Voltar", "Back", "Volver")} onClick={() => setMode("home")}><X /></Button></>}
+          {mode === "view" && <><Button variant="ghost" size="icon" aria-label={tx("Alternar para edição", "Switch to editing", "Cambiar a edición")} title={tx("Alternar para edição", "Switch to editing", "Cambiar a edición")} onClick={() => { setTool("mover"); setSel(null); setPanelOpen(false); setMode("edit"); }}><Pencil /></Button><Button variant="ghost" size="icon" aria-label={t.zoomOut} title={t.zoomOut} onClick={() => zoom(0.8)}><Minus /></Button><Button variant="ghost" size="icon" aria-label={t.zoomIn} title={t.zoomIn} onClick={() => zoom(1.25)}><Plus /></Button><Button variant="ghost" size="icon" aria-label={tx("Voltar ao início", "Back to home", "Volver al inicio")} title={tx("Voltar ao início", "Back to home", "Volver al inicio")} onClick={() => setMode("home")}><X /></Button></>}
           {mode === "edit" && <>
+          <Button variant="ghost" size="icon" aria-label={tx("Alternar para visualização", "Switch to view mode", "Cambiar a visualización")} title={tx("Alternar para visualização", "Switch to view mode", "Cambiar a visualización")} onClick={() => { setSel(null); setPanelOpen(false); setMode("view"); }}><Eye /></Button>
           <Button variant="ghost" size="icon" className="min-[901px]:hidden" aria-label={t.tools} title={t.tools} onClick={() => setPanelOpen(v => !v)}><Menu /></Button>
           <Button variant="ghost" size="icon" disabled={!canUndo} aria-label={t.undo} title={t.undo} onClick={handleUndo}><Undo className="h-4 w-4" /></Button>
           <Button variant="ghost" size="icon" disabled={!canRedo} aria-label={t.redo} title={t.redo} onClick={handleRedo}><Redo className="h-4 w-4" /></Button>
