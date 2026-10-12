@@ -7,7 +7,7 @@ export const LANGS: { id: Lang; label: string }[] = [
 
 const pt = {
   appName: "Frontiers Map Simulator",
-  tools: "Ferramentas", close: "Fechar", mover: "✋ Mover / Selecionar", pintar: "🖌 Pintar território", apagar: "🧽 Apagar",
+  tools: "Ferramentas", close: "Fechar", mover: "✋ Mover / Selecionar", pintar: "🖌 Pintar território", balde: "🪣 Preencher área", apagar: "🧽 Apagar",
   capital: "★ Capital", cidade: "● Cidade", forte: "▲ Forte", porto: "⚓ Porto", estrada: "━ Estrada", rota: "┅ Rota marítima",
   brushSize: "Tamanho do pincel", smooth: "Bordas suaves", grid: "Grade", finishLine: "Concluir traçado",
   nations: "Nações", newNation: "+ Nova", filter: "Filtrar relações", allNations: "Todas as nações", noNations: "Nenhuma nação.",
@@ -27,12 +27,14 @@ const pt = {
   invalidImage: "Escolha uma imagem válida.", imageFail: "Não foi possível abrir esta imagem.", storageFull: "Armazenamento cheio (imagem muito grande?)",
   exported: "Cópia do mundo exportada com bandeiras e imagens.", confirmImport: "Importar este mundo substituirá o mapa atual. Deseja continuar?",
   imported: "Mundo importado com sucesso.", invalidFile: "Arquivo inválido. Escolha uma cópia JSON exportada pelo app.", mapLabel: "Mapa de nações",
+  npcs: "População / NPCs", grossIncome: "Renda bruta (esmeraldas)", expenses: "Gasto (esmeraldas)", netIncome: "Lucro líquido", production: "Produção",
+  photo: "Foto do local", uploadPhoto: "Enviar foto", photoUrl: "ou cole o link da foto", removePhoto: "Remover foto", emeralds: "esmeraldas"
 };
 export type Dict = typeof pt;
 
 const en: Dict = {
   appName: "Frontiers Map Simulator",
-  tools: "Tools", close: "Close", mover: "✋ Move / Select", pintar: "🖌 Paint territory", apagar: "🧽 Erase",
+  tools: "Tools", close: "Close", mover: "✋ Move / Select", pintar: "🖌 Paint territory", balde: "🪣 Fill area", apagar: "🧽 Erase",
   capital: "★ Capital", cidade: "● City", forte: "▲ Fort", porto: "⚓ Port", estrada: "━ Road", rota: "┅ Sea route",
   brushSize: "Brush size", smooth: "Smooth borders", grid: "Grid", finishLine: "Finish path",
   nations: "Nations", newNation: "+ New", filter: "Filter relations", allNations: "All nations", noNations: "No nations.",
@@ -52,11 +54,13 @@ const en: Dict = {
   invalidImage: "Choose a valid image.", imageFail: "Could not open this image.", storageFull: "Storage full (image too large?)",
   exported: "World backup exported with flags and images.", confirmImport: "Importing this world will replace the current map. Continue?",
   imported: "World imported successfully.", invalidFile: "Invalid file. Choose a JSON backup exported by the app.", mapLabel: "Nations map",
+  npcs: "Population / NPCs", grossIncome: "Gross income (emeralds)", expenses: "Expenses (emeralds)", netIncome: "Net profit", production: "Production",
+  photo: "Place photo", uploadPhoto: "Upload photo", photoUrl: "or paste photo link", removePhoto: "Remove photo", emeralds: "emeralds"
 };
 
 const es: Dict = {
   appName: "Frontiers Map Simulator",
-  tools: "Herramientas", close: "Cerrar", mover: "✋ Mover / Seleccionar", pintar: "🖌 Pintar territorio", apagar: "🧽 Borrar",
+  tools: "Herramientas", close: "Cerrar", mover: "✋ Mover / Seleccionar", pintar: "🖌 Pintar territorio", balde: "🪣 Rellenar área", apagar: "🧽 Borrar",
   capital: "★ Capital", cidade: "● Ciudad", forte: "▲ Fuerte", porto: "⚓ Puerto", estrada: "━ Camino", rota: "┅ Ruta marítima",
   brushSize: "Tamaño del pincel", smooth: "Bordes suaves", grid: "Cuadrícula", finishLine: "Terminar trazado",
   nations: "Naciones", newNation: "+ Nueva", filter: "Filtrar relaciones", allNations: "Todas las naciones", noNations: "Ninguna nación.",
@@ -76,6 +80,8 @@ const es: Dict = {
   invalidImage: "Elige una imagen válida.", imageFail: "No se pudo abrir esta imagen.", storageFull: "Almacenamiento lleno (¿imagen muy grande?)",
   exported: "Copia del mundo exportada con banderas e imágenes.", confirmImport: "Importar este mundo reemplazará el mapa actual. ¿Continuar?",
   imported: "Mundo importado con éxito.", invalidFile: "Archivo no válido. Elige una copia JSON exportada por la app.", mapLabel: "Mapa de naciones",
+  npcs: "Población / NPCs", grossIncome: "Ingreso bruto (esmeraldas)", expenses: "Gasto (esmeraldas)", netIncome: "Beneficio neto", production: "Producción",
+  photo: "Foto del lugar", uploadPhoto: "Subir foto", photoUrl: "o pega el enlace de la foto", removePhoto: "Quitar foto", emeralds: "esmeraldas"
 };
 
 export const DICTS: Record<Lang, Dict> = { pt, en, es };
