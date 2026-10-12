@@ -5,7 +5,7 @@ import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Up
 import { strokeCells, territoryPath } from "@/lib/map-tools";
 
 type Relation = "propria" | "aliada" | "neutra" | "inimiga";
-type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string };
+type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined };
 type MarkerType = "capital" | "cidade" | "forte" | "porto";
 type Marker = { id: string; type: MarkerType; x: number; y: number; name: string; notes: string };
 type LineType = "estrada" | "rota";
@@ -283,7 +283,8 @@ export default function MapApp() {
         <svg className="absolute left-0 top-0 overflow-visible" width={W} height={H}
           style={{ transform: `translate(${view.x}px,${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
           <rect width={W} height={H} className="fill-background" />
-          {data.bg && <image href={data.bg} width={W} height={H} preserveAspectRatio={data.bgFit === "stretch" ? "none" : data.bgFit === "cover" ? "xMidYMid slice" : "xMidYMid meet"} opacity={data.bgOpacity} transform={`translate(${data.bgX + W / 2},${data.bgY + H / 2}) rotate(${data.bgRotation}) scale(${data.bgScale}) translate(${-W / 2},${-H / 2})`} pointerEvents="none" />}
+          <defs><clipPath id="map-bounds"><rect width={W} height={H} /></clipPath></defs>
+          {data.bg && <g clipPath="url(#map-bounds)"><image href={data.bg} width={W} height={H} preserveAspectRatio={data.bgFit === "stretch" ? "none" : data.bgFit === "cover" ? "xMidYMid slice" : "xMidYMid meet"} opacity={data.bgOpacity} transform={`translate(${data.bgX + W / 2},${data.bgY + H / 2}) rotate(${data.bgRotation}) scale(${data.bgScale}) translate(${-W / 2},${-H / 2})`} pointerEvents="none" /></g>}
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {territories.filter(t => filter === "todas" || t.nation.relation === filter).map(t => <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />)}
           {data.showGrid && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
