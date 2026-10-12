@@ -284,6 +284,24 @@ export default function MapApp() {
     });
   };
 
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1);
+      setView(v => {
+        const z = Math.min(4, Math.max(0.08, v.z * Math.exp(-dy * 0.0015)));
+        const k = z / v.z;
+        return { z, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   const toggleFullscreen = async () => {
     if (fullscreen) {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -697,7 +715,7 @@ export default function MapApp() {
       </aside>
 
       <main ref={ref} className="relative flex-1 touch-none select-none overflow-hidden bg-muted/20" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onPointerUp} onPointerLeave={() => { setCursorPos(null); stopDrag(); }}>
-        <svg className="h-full w-full" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="absolute left-0 top-0 max-w-none overflow-visible" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
           <defs>
             <pattern id="g" width={CELL * 10} height={CELL * 10} patternUnits="userSpaceOnUse">
               <path d={`M ${CELL * 10} 0 L 0 0 0 ${CELL * 10}`} fill="none" stroke="currentColor" strokeWidth={0.5} opacity={0.15} />
