@@ -124,14 +124,14 @@ export default function MapApp() {
     updateHistoryState();
   };
   const handleUndo = () => {
-    if (historyIndexRef.current <= 0) return;
+    if (mode !== "edit" || historyIndexRef.current <= 0) return;
     historyIndexRef.current--;
     const snapshot = historyRef.current[historyIndexRef.current];
     if (snapshot) { restoringHistoryRef.current = true; setData(snapshot); }
     updateHistoryState();
   };
   const handleRedo = () => {
-    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    if (mode !== "edit" || historyIndexRef.current >= historyRef.current.length - 1) return;
     historyIndexRef.current++;
     const snapshot = historyRef.current[historyIndexRef.current];
     if (snapshot) { restoringHistoryRef.current = true; setData(snapshot); }
@@ -193,7 +193,7 @@ export default function MapApp() {
     pushHistory(data);
   }, [data, loaded]);
 
-  useEffect(() => { if (loaded) try { localStorage.setItem(KEY, JSON.stringify({ map: data, mapName, mapDescription, versions })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded]);
+  useEffect(() => { if (loaded && mode === "edit") try { localStorage.setItem(KEY, JSON.stringify({ map: data, mapName, mapDescription, versions })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded, mode]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
