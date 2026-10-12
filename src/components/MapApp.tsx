@@ -895,11 +895,12 @@ function readMap(input: unknown): Data {
   const finite = (value: unknown, fallback: number, min: number, max: number) => typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
   const image = (value: unknown) => typeof value === "string" && /^data:image\/(png|jpeg|webp|gif|avif);base64,/.test(value) ? value : undefined;
   const flagImage = (value: unknown) => image(value) ?? (typeof value === "string" && /^https:\/\/\S+$/.test(value) ? value : undefined);
-  const oldCell = typeof d["cellSize"] === "number" ? d["cellSize"] : 20;
-  const factor = Math.max(1, Math.round(oldCell / CELL));
+  // Imported files are untrusted: clamp legacy cell sizes before expanding tiles.
+  const oldCell = typeof d["cellSize"] === "number" && Number.isFinite(d["cellSize"]) ? Math.max(CELL, Math.min(40, d["cellSize"])) : 20;
+  const factor = Math.max(1, Math.min(20, Math.round(oldCell / CELL)));
   const nations: Nation[] = d["nations"].map((n: Nation) => {
     if (!n || typeof n.id !== "string" || !n.id || typeof n.name !== "string" || !RELS.includes(n.relation)) throw new Error("Invalid nation");
-    return { id: n.id, name: n.name, color: /^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color) ? n.color : "#888888", relation: n.relation, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: flagImage(n.flag), overlordId: typeof n.overlordId === "string" && n.overlordId !== n.id ? n.overlordId : undefined };
+    return { id: n.id, name: n.name, color: typeof n.color === "string" && (/^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color)) ? n.color : "#888888", relation: n.relation, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: flagImage(n.flag), overlordId: typeof n.overlordId === "string" && n.overlordId !== n.id ? n.overlordId : undefined, enemyIds: Array.isArray(n.enemyIds) ? n.enemyIds.filter((id): id is string => typeof id === "string" && id !== n.id) : [] };
   });
   if (new Set(nations.map(n => n.id)).size !== nations.length) throw new Error("Duplicate nation");
   const ids = new Set(nations.map(n => n.id));
@@ -911,7 +912,7 @@ function readMap(input: unknown): Data {
     tiles[key] = id;
   }
   const markers: Marker[] = d["markers"].map((m: any) => {
-    if (!m || typeof m.id !== "string" || !(m.type in ICON) || !Number.isFinite(m.x) || !Number.isFinite(m.y)) throw new Error("Invalid marker");
+    if (!m || typeof m.id !== "string" || !Object.prototype.hasOwnProperty.call(ICON, m.type) || !Number.isFinite(m.x) || !Number.isFinite(m.y)) throw new Error("Invalid marker");
     return {
       id: m.id,
       type: m.type,
@@ -938,9 +939,15 @@ function readMap(input: unknown): Data {
     return { id: l.id, type: l.type, points: l.points };
   });
   const comments: MapComment[] = Array.isArray(d["comments"]) ? (d["comments"] as MapComment[]).filter(c => c && typeof c.id === "string" && Number.isFinite(c.x) && Number.isFinite(c.y) && typeof c.text === "string").map(c => ({ id: c.id, x: c.x, y: c.y, text: c.text, createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date().toISOString(), size: finite(c.size, 18, 8, 64), fontFamily: typeof c.fontFamily === "string" && ["Arial", "Georgia", "Times New Roman", "Verdana", "Courier New", "Trebuchet MS"].includes(c.fontFamily) ? c.fontFamily : "Arial", color: typeof c.color === "string" && /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : undefined, rotation: finite(c.rotation, 0, -180, 180) })) : [];
-  const validNationIds = new Set(nations.map(n => n.id)); for (const nation of nations) if (nation.overlordId && !validNationIds.has(nation.overlordId)) nation.overlordId = undefined;
+  const validNationIds = new Set(nations.map(n => n.id));
+  for (const nation of nations) {
+    if (nation.overlordId && !validNationIds.has(nation.overlordId)) nation.overlordId = undefined;
+    nation.enemyIds = (nation.enemyIds ?? []).filter(id => validNationIds.has(id));
+  }
+  const alliances: Alliance[] = Array.isArray(d["alliances"]) ? (d["alliances"] as Alliance[]).filter(a => a && typeof a.id === "string" && typeof a.name === "string").map(a => ({ id: a.id, name: a.name, nationIds: Array.isArray(a.nationIds) ? a.nationIds.filter(id => typeof id === "string" && validNationIds.has(id)) : [], color: typeof a.color === "string" && /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : "#64748b", image: flagImage(a.image) })) : [];
+  const wars: War[] = Array.isArray(d["wars"]) ? (d["wars"] as War[]).filter(w => w && typeof w.id === "string" && typeof w.name === "string").map(w => ({ id: w.id, name: w.name, attackers: Array.isArray(w.attackers) ? w.attackers.filter(id => typeof id === "string" && validNationIds.has(id)) : [], defenders: Array.isArray(w.defenders) ? w.defenders.filter(id => typeof id === "string" && validNationIds.has(id)) : [], active: typeof w.active === "boolean" ? w.active : false, startedAt: typeof w.startedAt === "string" ? w.startedAt : new Date().toISOString(), endedAt: typeof w.endedAt === "string" ? w.endedAt : undefined })) : [];
   for (const nation of nations) { let cursor = nation.overlordId; const seen = new Set([nation.id]); while (cursor) { if (seen.has(cursor)) { nation.overlordId = undefined; break; } seen.add(cursor); cursor = nations.find(n => n.id === cursor)?.overlordId; } }
-  return { ...empty, cellSize: CELL, nations, tiles, markers, lines, comments, bg: image(d["bg"]) ?? null,
+  return { ...empty, cellSize: CELL, nations, tiles, markers, lines, comments, alliances, wars, bg: image(d["bg"]) ?? null,
     bgOpacity: finite(d["bgOpacity"], 0.6, 0, 1), bgFit: d["bgFit"] === "cover" || d["bgFit"] === "stretch" ? d["bgFit"] : "contain",
     bgScale: finite(d["bgScale"], 1, 0.2, 3), bgX: finite(d["bgX"], 0, -W, W), bgY: finite(d["bgY"], 0, -H, H), bgRotation: finite(d["bgRotation"], 0, -180, 180),
     smooth: typeof d["smooth"] === "boolean" ? d["smooth"] : true, showGrid: typeof d["showGrid"] === "boolean" ? d["showGrid"] : true };
