@@ -551,11 +551,13 @@ export default function MapApp() {
     return !q || m.name.toLocaleLowerCase().includes(q) || m.notes.toLocaleLowerCase().includes(q) || (m.production ?? "").toLocaleLowerCase().includes(q);
   });
   const visibleNations = data.nations.filter(n => {
+    const referenceId = mode === "view" ? viewerReferenceId : data.playerNationId ?? "";
+    const relation = mode === "view" ? relationToViewerReference(n) : relationToPlayer(n);
     if (filter === "todas") return true;
     if (filter === "alianças") return alliances.some(a => a.nationIds.includes(n.id));
     if (filter === "guerras") return wars.some(w => w.active && [...w.attackers, ...w.defenders].includes(n.id));
-    if (filter === "inimigas") return relationToPlayer(n) === "inimiga" || (n.enemyIds ?? []).includes(data.playerNationId ?? "") || data.nations.some(other => other.id === data.playerNationId && (other.enemyIds ?? []).includes(n.id));
-    return relationToPlayer(n) === filter;
+    if (filter === "inimigas") return relation === "inimiga" || (n.enemyIds ?? []).includes(referenceId) || data.nations.some(other => other.id === referenceId && (other.enemyIds ?? []).includes(n.id));
+    return relation === filter;
   });
   const territories = useMemo(() => data.nations.map(n => {
     const keys = Object.entries(data.tiles).filter(([, id]) => id === n.id).map(([key]) => key);
@@ -613,7 +615,7 @@ export default function MapApp() {
           <div><p className="opacity-70">{tx("Saldo econômico", "Economic balance", "Balance económico")}</p><strong className={worldBalance < 0 ? "text-destructive" : "text-emerald-600"}>{worldBalance.toLocaleString(lang === "pt" ? "pt-BR" : lang === "es" ? "es-ES" : "en-US")}</strong></div>
         </div>
         <label className="label">{tx("País de referência diplomática", "Diplomatic reference country", "País de referencia diplomática")}
-          <select className="field mt-1" value={viewerReferenceId} onChange={e => setViewerReferenceNationId(e.target.value)}>
+          <select className="field mt-1" value={viewerReferenceId} onChange={e => { setViewerReferenceNationId(e.target.value); setFilter("todas"); setViewerNationFilter("todas"); }}>
             <option value="">{tx("Usar relação padrão do mapa", "Use map default relation", "Usar relación predeterminada del mapa")}</option>
             {data.nations.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
           </select>
@@ -622,9 +624,9 @@ export default function MapApp() {
           {([{id:"nations",label:tx("Nações","Nations","Naciones")},{id:"locations",label:tx("Localidades","Locations","Localidades")},{id:"diplomacy",label:tx("Diplomacia","Diplomacy","Diplomacia")},{id:"compare",label:tx("Comparação","Comparison","Comparación")},{id:"layers",label:tx("Camadas visíveis","Visible layers","Capas visibles")}] as const).map(tab => <Button key={tab.id} role="tab" aria-selected={viewerTab === tab.id} variant={viewerTab === tab.id ? "default" : "outline"} size="sm" className="h-auto min-h-9 whitespace-normal px-2 py-2 text-xs" onClick={() => setViewerTab(tab.id)}>{tab.label}</Button>)}
         </div>
         {viewerTab === "nations" && <section className="grid gap-3" role="tabpanel">
-          <h3 className="font-semibold">{tx("Relações e governo","Relations and government","Relaciones y gobierno")}</h3>
+          <h3 className="font-semibold">{tx("Países e relações","Nations and relations","Países y relaciones")}</h3>
           <input className="field" value={viewerNationSearch} onChange={e => setViewerNationSearch(e.target.value)} placeholder={tx("Buscar país ou governante...", "Search nation or ruler...", "Buscar país o gobernante...")} />
-          <select className="field" value={viewerNationFilter} onChange={e => setViewerNationFilter(e.target.value as typeof viewerNationFilter)} aria-label={tx("Filtrar países", "Filter nations", "Filtrar países")}>
+          <select className="field" value={viewerNationFilter} onChange={e => { const next = e.target.value as typeof viewerNationFilter; setViewerNationFilter(next); setFilter(next); }} aria-label={tx("Filtrar países no mapa e na lista", "Filter nations on map and list", "Filtrar países en el mapa y la lista")}>
             <option value="todas">{tx("Todos os países", "All nations", "Todos los países")}</option>
             <option value="propria">{tx("País de referência", "Reference country", "País de referencia")}</option>
             <option value="amigavel">{tx("Amigáveis", "Friendly", "Amistosos")}</option>
