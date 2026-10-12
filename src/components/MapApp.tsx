@@ -547,8 +547,12 @@ export default function MapApp() {
       <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
       <aside className={`map-tools-panel flex shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-card p-4 ${panelOpen ? "" : "panel-closed"}`}>
         <div className="flex items-center justify-between gap-2"><h1 className="font-display text-2xl leading-none text-primary">{t.appName}</h1><Button size="icon" variant="ghost" className="min-[901px]:hidden" aria-label={t.close} onClick={() => setPanelOpen(false)}><X /></Button></div>
-        <section>
+        <section className="rounded-md border border-border p-2">
+          <h2 className="label">{tx("Ações rápidas", "Quick actions", "Acciones rápidas")}</h2>
           <div className="mb-2 grid grid-cols-2 gap-1"><Button variant="outline" size="sm" onClick={() => { setTutorialStep(0); setDialog({ type: "tutorial" }); }}><GraduationCap className="h-4 w-4" />{tx("Tutorial", "Tutorial", "Tutorial")}</Button><Button variant="outline" size="sm" onClick={() => setDialog({ type: "compare" })}><GitCompareArrows className="h-4 w-4" />{tx("Comparar", "Compare", "Comparar")}</Button><Button variant="outline" size="sm" onClick={() => { setDiplomacyExpanded([]); setDialog({ type: "diplomacy" }); }}><Users className="h-4 w-4" />{tx("Diplomacia", "Diplomacy", "Diplomacia")}</Button><Button variant="outline" size="sm" onClick={exportPng}><Download className="h-4 w-4" />{tx("Exportar PNG", "Export PNG", "Exportar PNG")}</Button></div>
+        </section>
+        <section>
+          
           <h2 className="label">{t.tools}</h2>
           <div className="grid gap-1">
             {TOOLS.map(id => (
@@ -561,8 +565,8 @@ export default function MapApp() {
           <div className="mt-3 rounded-md border border-border p-2"><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><Layers className="h-4 w-4" />{tx("Camadas visíveis", "Visible layers", "Capas visibles")}</h3>{([{ key: "background", label: tx("Mapa de fundo", "Background map", "Mapa de fondo") }, { key: "territories", label: tx("Territórios", "Territories", "Territorios") }, { key: "labels", label: tx("Nomes e bandeiras", "Names and flags", "Nombres y banderas") }, { key: "markers", label: tx("Cidades e símbolos", "Cities and symbols", "Ciudades y símbolos") }, { key: "routes", label: tx("Estradas e rotas", "Roads and routes", "Caminos y rutas") }, { key: "comments", label: tx("Textos no mapa", "Map text", "Textos en el mapa") }, { key: "grid", label: tx("Grade", "Grid", "Cuadrícula") }] as const).map(layer => <label key={layer.key} className="flex items-center gap-2 py-1 text-sm"><input type="checkbox" checked={layers[layer.key]} onChange={e => setLayers(current => ({ ...current, [layer.key]: e.target.checked }))} />{layer.label}</label>)}</div>
           {(tool === "estrada" || tool === "rota") && <Button variant="outline" size="sm" className="mt-2 w-full" disabled={draft.length < 2} onClick={finishLine}>{t.finishLine}</Button>}
           {(tool === "pintar" || tool === "balde") && (brush && nationById(brush) ? <p className="mt-2 text-sm">{t.paintingWith}: <span style={{ color: nationById(brush)?.color }}>■</span> {nationById(brush)?.name}</p> : <div className="mt-2 grid gap-1"><p className="text-sm text-destructive">{data.nations.length ? t.pickNation : t.createFirst}</p>{!data.nations.length && <Button size="sm" onClick={addNation}>{t.createNation}</Button>}</div>)}
-        </section>
-        <section>
+        </section></details>
+        <details open className="rounded-md border border-border p-2"><summary className="cursor-pointer select-none font-semibold">{t.nations}</summary><section className="mt-3">
           <div className="mb-1 flex items-center justify-between"><h2 className="label !mb-0">{t.nations}</h2><Button variant="ghost" size="sm" onClick={addNation} className="text-sm text-primary hover:underline">{t.newNation}</Button></div>
           <label htmlFor="relation-filter" className="label">{t.filter}</label><select id="relation-filter" aria-label={t.filter} className="field mb-2" value={filter} onChange={e => { setFilter(e.target.value as typeof filter); setSel(null); }}><option value="todas">{t.allNations}</option>{RELS.map(r => <option key={r} value={r}>{REL[r]}</option>)}<option value="alianças">{tx("Alianças (unificadas)", "Alliances (unified)", "Alianzas (unificadas)")}</option><option value="guerras">{tx("Guerras ativas", "Active wars", "Guerras activas")}</option><option value="inimigas">{tx("Inimigos", "Enemies", "Enemigos")}</option></select>
           {visibleNations.length === 0 && <p className="text-xs text-muted-foreground">{t.noNations}</p>}
@@ -576,8 +580,8 @@ export default function MapApp() {
               </Button>
             ))}
           </div>
-        </section>
-        <section>
+        </section></details>
+        <details className="rounded-md border border-border p-2"><summary className="cursor-pointer select-none font-semibold">{t.bgMap}</summary><section className="mt-3">
           <h2 className="label">{t.bgMap}</h2>
           <input type="file" aria-label={t.bgImage} accept="image/*" onChange={e => onBg(e.target.files?.[0])} className="w-full text-xs" />
           {data.bg && <>
@@ -587,14 +591,14 @@ export default function MapApp() {
             {([{ key: "bgScale", label: t.scale, min: 0.2, max: 3, step: 0.05 }, { key: "bgX", label: t.posX, min: -W, max: W, step: 20 }, { key: "bgY", label: t.posY, min: -H, max: H, step: 20 }, { key: "bgRotation", label: t.rotation, min: -180, max: 180, step: 1 }] as const).map(c => <div key={c.key}><label htmlFor={c.key} className="label mt-2">{c.label} · {data[c.key]}</label><input id={c.key} className="w-full" type="range" min={c.min} max={c.max} step={c.step} value={data[c.key]} onChange={e => setData(d => ({ ...d, [c.key]: +e.target.value }))} /></div>)}
             <div className="mt-2 flex gap-1"><Button variant="outline" size="sm" onClick={() => setData(d => ({ ...d, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, bgOpacity: 0.6 }))}><RotateCcw />{t.reset}</Button><Button variant="ghost" size="icon" aria-label={t.removeBg} title={t.removeBg} className="text-destructive" onClick={() => setData(d => ({ ...d, bg: null }))}><Trash2 /></Button></div>
           </>}
-        </section>
-        <section className="mt-auto grid gap-1 text-sm">
+        </section></details>
+        <details className="mt-auto rounded-md border border-border p-2"><summary className="cursor-pointer select-none font-semibold">{tx("Salvar, importar e versões", "Save, import and versions", "Guardar, importar y versiones")}</summary><section className="mt-3 grid gap-1 text-sm">
           <Button variant="outline" onClick={exportJson} className="rounded border border-border px-2 py-1 hover:bg-accent"><Download />{tx("Salvar mapa / versões", "Save map / versions", "Guardar mapa / versiones")}</Button>
           <Button variant="outline" onClick={exportPng}><Download />{tx("Exportar mapa em PNG", "Export map as PNG", "Exportar mapa como PNG")}</Button>
           <Button variant="outline" onClick={() => { if (!versions.length) { setNotice(tx(tx("Nenhuma versão salva ainda. Salve o mapa para criar a primeira.", "No saved versions yet. Save the map to create the first one.", "Aún no hay versiones guardadas. Guarda el mapa para crear la primera."), "No saved versions yet. Save the map to create the first one.", "Aún no hay versiones guardadas. Guarda el mapa para crear la primera.")); return; } setDialog({ type: "history", selectedId: versions[versions.length - 1]?.id ?? "" }); }}><History className="h-4 w-4" />{tx("Histórico de versões", "Version history", "Historial de versiones")}</Button>
           <Button variant="outline" onClick={() => importRef.current?.click()}><Upload />{t.importWorld}</Button>
           <Button variant="ghost" onClick={() => setDialog({ type: "confirm", title: t.clearMap, message: t.confirmClear, onSubmit: () => { setData(empty); setSel(null); setBrush(null); setDraft([]); } })} className="text-xs text-destructive">{t.clearMap}</Button>
-        </section>
+        </section></details>
       </aside>
 
       <div ref={ref} aria-label={t.mapLabel} className="relative min-w-0 flex-1 touch-none select-none overflow-hidden bg-muted"
