@@ -7,7 +7,6 @@ import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 type Relation = "propria" | "aliada" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string };
 type MapComment = { id: string; x: number; y: number; text: string; createdAt: string };
-type Region = { id: string; name: string; nationId: string; color: string; cells: string[] };
 type MapVersion = { id: string; name: string; description: string; createdAt: string; data: Data };
 type MarkerType = "capital" | "cidade" | "forte" | "porto";
 type MarkerShape = "circle" | "square" | "triangle" | "star" | "diamond" | "hexagon" | "cross";
@@ -27,18 +26,18 @@ type Marker = {
 };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
-type Data = { cellSize?: number; nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; regions: Region[]; showRegions: boolean; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
+type Data = { cellSize?: number; nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
 type AppDialog = { type: "text"; title: string; value: string; onSubmit: (value: string) => void } | { type: "confirm"; title: string; message: string; onSubmit: () => void } | { type: "save"; name: string; description: string; filename: string } | { type: "history"; selectedId: string };
-type Tool = "mover" | "pintar" | "balde" | "apagar" | "comentario" | "regiao" | MarkerType | LineType;
+type Tool = "mover" | "pintar" | "balde" | "apagar" | "comentario" | MarkerType | LineType;
 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
 const KEY = "atlas-nacoes-v1";
 const uid = () => Math.random().toString(36).slice(2, 9);
-const empty: Data = { cellSize: MAP_CELL, nations: [], tiles: {}, markers: [], lines: [], comments: [], regions: [], showRegions: true, bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
+const empty: Data = { cellSize: MAP_CELL, nations: [], tiles: {}, markers: [], lines: [], comments: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
 const RELS: Relation[] = ["propria", "aliada", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
 const SHAPES: { id: MarkerShape; label: string }[] = [{ id: "circle", label: "Círculo" }, { id: "square", label: "Quadrado" }, { id: "triangle", label: "Triângulo" }, { id: "star", label: "Estrela" }, { id: "diamond", label: "Losango" }, { id: "hexagon", label: "Hexágono" }, { id: "cross", label: "Cruz" }];
-const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "comentario", "regiao", "capital", "cidade", "forte", "porto", "estrada", "rota"];
+const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "comentario", "capital", "cidade", "forte", "porto", "estrada", "rota"];
 
 type Sel = { kind: "nation"; id: string } | { kind: "marker"; id: string } | { kind: "line"; id: string } | null;
 
@@ -57,7 +56,8 @@ export default function MapApp() {
   const [mapName, setMapName] = useState("Meu mundo");
   const [mapDescription, setMapDescription] = useState("");
   const [versions, setVersions] = useState<MapVersion[]>([]);
-  const [selectedRegionId, setSelectedRegionId] = useState("");
+  const [deviceMode, setDeviceMode] = useState<"pc" | "celular">("pc");
+  const [orientationPortrait, setOrientationPortrait] = useState(false);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
 
   const historyRef = useRef<Data[]>([]);
@@ -196,7 +196,7 @@ export default function MapApp() {
       for (const cell of cells) {
         if (tool === "apagar") delete tiles[cell]; else if (brush) tiles[cell] = brush;
       }
-      return { ...d, tiles, regions: d.regions.map(region => ({ ...region, cells: region.cells.filter(cell => tiles[cell] === region.nationId) })) };
+      return { ...d, tiles };
     });
   }, [tool, brush, view, brushSize]);
 
@@ -246,10 +246,6 @@ export default function MapApp() {
     const [wx, wy] = toWorld(e.clientX, e.clientY);
     if (tool === "comentario") {
       setDialog({ type: "text", title: "Texto sobre o mapa", value: "", onSubmit: value => { if (value.trim()) setData(d => ({ ...d, comments: [...d.comments, { id: uid(), x: wx, y: wy, text: value.trim(), createdAt: new Date().toISOString() }] })); } });
-    } else if (tool === "regiao") {
-      const c = cellAt(e.clientX, e.clientY);
-      if (!selectedRegionId) { setNotice(lang === "pt" ? "Crie ou selecione uma região no painel." : "Select a region first."); return; }
-      if (c) { const region = data.regions.find(q => q.id === selectedRegionId); if (!region) { setNotice("Selecione uma região primeiro."); return; } const cells = [...strokeCells([c[0] + 0.5, c[1] + 0.5], [c[0] + 0.5, c[1] + 0.5], brushSize - 1)].filter(key => data.tiles[key] === region.nationId); if (!cells.length) { setNotice(lang === "pt" ? "Pinte primeiro o território da nação desta região." : "Paint this nation territory first."); return; } const assigned = new Set(cells); setData(d => ({ ...d, regions: d.regions.map(q => q.id === selectedRegionId ? { ...q, cells: [...new Set([...q.cells, ...cells])] } : { ...q, cells: q.cells.filter(cell => !assigned.has(cell)) }) })); }
     } else if (tool === "pintar" || tool === "apagar") {
       if (tool === "pintar" && !brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
       drag.current = { mode: "paint", sx: 0, sy: 0, vx: 0, vy: 0 }; paint(e.clientX, e.clientY);
@@ -257,7 +253,7 @@ export default function MapApp() {
       if (!brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
       const c = cellAt(e.clientX, e.clientY);
       if (c) {
-        setData(d => { const tiles = floodFill(c[0], c[1], brush, d.tiles); return { ...d, tiles, regions: d.regions.map(region => ({ ...region, cells: region.cells.filter(cell => tiles[cell] === region.nationId) })) }; });
+        setData(d => { const tiles = floodFill(c[0], c[1], brush, d.tiles); return { ...d, tiles }; });
       }
     } else if (tool === "capital" || tool === "cidade" || tool === "forte" || tool === "porto") {
       const m: Marker = { id: uid(), type: tool, shape: tool === "capital" ? "star" : tool === "cidade" ? "circle" : tool === "forte" ? "square" : "diamond", x: wx, y: wy, name: t.newMarker, notes: "", npcs: 100, grossIncome: 50, expenses: 20, production: "" };
@@ -332,11 +328,11 @@ export default function MapApp() {
     try {
       const parsed = JSON.parse(await f.text()) as Record<string, unknown>;
       const next = readMap(parsed["map"] ?? parsed);
-      setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { const meta = parsed["metadata"] as { name?: string; description?: string } | undefined; setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); setSelectedRegionId(""); fitMap(); setNotice(t.imported); } }); return;
+      setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { const meta = parsed["metadata"] as { name?: string; description?: string } | undefined; setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap(); setNotice(t.imported); } }); return;
       const meta = parsed["metadata"] as { name?: string; description?: string } | undefined;
       setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
       if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]);
-      setSel(null); setBrush(null); setDraft([]); setFilter("todas"); setSelectedRegionId(""); fitMap();
+      setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap();
       setNotice(t.imported);
     } catch { setNotice(t.invalidFile); }
   };
@@ -364,11 +360,11 @@ export default function MapApp() {
           <div className="grid gap-1">
             {TOOLS.map(id => (
               <Button variant="ghost" key={id} onClick={() => { setTool(id); setDraft([]); if ((id === "pintar" || id === "balde") && !brush) { const first = visibleNations[0] ?? data.nations[0]; if (first) setBrush(first.id); else setNotice(t.createFirst); } }}
-                className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{({ comentario: "Comentário fixado", regiao: "Editar regiões" } as Record<string, string>)[id] ?? (t as Record<string, string>)[id]}</Button>
+                className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{id === "comentario" ? "Texto no mapa" : (t as Record<string, string>)[id]}</Button>
             ))}
           </div>
-          {(tool === "pintar" || tool === "apagar" || tool === "regiao") && <div className="mt-3"><label htmlFor="brush-size" className="label">{t.brushSize} · {brushSize}</label><input id="brush-size" type="range" min={1} max={10} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
-          <div className="mt-3 grid gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.smooth} onChange={e => setData(d => ({ ...d, smooth: e.target.checked }))} />{t.smooth}</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.showGrid} onChange={e => setData(d => ({ ...d, showGrid: e.target.checked }))} />{t.grid}</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.showRegions} onChange={e => setData(d => ({ ...d, showRegions: e.target.checked }))} />Mostrar fronteiras regionais</label></div>
+          {(tool === "pintar" || tool === "apagar") && <div className="mt-3"><label htmlFor="brush-size" className="label">{t.brushSize} · {brushSize}</label><input id="brush-size" type="range" min={1} max={10} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
+          <div className="mt-3 grid gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.smooth} onChange={e => setData(d => ({ ...d, smooth: e.target.checked }))} />{t.smooth}</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.showGrid} onChange={e => setData(d => ({ ...d, showGrid: e.target.checked }))} />{t.grid}</label></div>
           {(tool === "estrada" || tool === "rota") && <Button variant="outline" size="sm" className="mt-2 w-full" disabled={draft.length < 2} onClick={finishLine}>{t.finishLine}</Button>}
           {(tool === "pintar" || tool === "balde") && (brush && nationById(brush) ? <p className="mt-2 text-sm">{t.paintingWith}: <span style={{ color: nationById(brush)?.color }}>■</span> {nationById(brush)?.name}</p> : <div className="mt-2 grid gap-1"><p className="text-sm text-destructive">{data.nations.length ? t.pickNation : t.createFirst}</p>{!data.nations.length && <Button size="sm" onClick={addNation}>{t.createNation}</Button>}</div>)}
         </section>
@@ -386,12 +382,6 @@ export default function MapApp() {
               </Button>
             ))}
           </div>
-        </section>
-        <section>
-          <div className="mb-2 flex items-center justify-between"><h2 className="label !mb-0">Regiões</h2><Button size="sm" variant="outline" onClick={() => { const owner = selNation ?? data.nations[0]; if (!owner) { setNotice("Crie uma nação antes de criar regiões."); return; } setDialog({ type: "text", title: "Nova região", value: "", onSubmit: name => { if (!name.trim()) return; const region: Region = { id: uid(), name: name.trim(), nationId: owner.id, color: owner.color, cells: [] }; setData(d => ({ ...d, regions: [...d.regions, region] })); setSelectedRegionId(region.id); setTool("regiao"); } }); }}><Plus className="h-3 w-3" />Nova região</Button></div>
-          <p className="mb-2 text-xs text-muted-foreground">Selecione uma região e clique nas células da nação para atribuí-las.</p>
-          <select className="field mb-2" value={selectedRegionId} onChange={e => setSelectedRegionId(e.target.value)}><option value="">Todas as regiões</option>{data.regions.map(q => <option key={q.id} value={q.id}>{q.name} — {nationById(q.nationId)?.name ?? "?"}</option>)}</select>
-          {data.regions.map(q => <div key={q.id} className="mb-1 flex items-center gap-1 text-xs"><span className="h-3 w-3 rounded-sm" style={{ background: q.color }} /><button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => { setSelectedRegionId(q.id); setTool("regiao"); }}>{q.name} ({q.cells.length})</button><button onClick={() => setDialog({ type: "text", title: "Renomear região", value: q.name, onSubmit: n => { if (n.trim()) setData(d => ({ ...d, regions: d.regions.map(v => v.id === q.id ? { ...v, name: n.trim() } : v) })); } })}>✎</button><button onClick={() => setDialog({ type: "confirm", title: "Excluir região", message: `Excluir "${q.name}"?`, onSubmit: () => { setData(d => ({ ...d, regions: d.regions.filter(v => v.id !== q.id) })); if (selectedRegionId === q.id) setSelectedRegionId(""); } })}>×</button></div>)}
         </section>
         <section>
           <h2 className="label">{t.bgMap}</h2>
@@ -424,7 +414,7 @@ export default function MapApp() {
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {territories.filter(t => filter === "todas" || t.nation.relation === filter).map(t => <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />)}
           {data.showGrid && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
-          {data.showRegions && data.regions.filter(q => !selectedRegionId || q.id === selectedRegionId).map(q => q.cells.map(key => { const [x, y] = key.split(",").map(Number); return <rect key={`${q.id}-${key}`} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill={q.color} fillOpacity={0.18} stroke={q.color} strokeWidth={0.7} pointerEvents="none" />; }))}
+          
           {data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={18} fontWeight={600} className="fill-foreground" paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: "pointer", userSelect: "none" }} onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); setDialog({ type: "text", title: "Editar texto do mapa", value: comment.text, onSubmit: value => { if (!value.trim()) setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); else setData(d => ({ ...d, comments: d.comments.map(c => c.id === comment.id ? { ...c, text: value.trim() } : c) })); } }); } }}>{comment.text}</text>)}
           {data.lines.map(l => (
             <polyline key={l.id} points={l.points.map(p => p.join(",")).join(" ")} fill="none"
@@ -517,7 +507,7 @@ export default function MapApp() {
             <div><label className="label">{t.treaties}</label><textarea rows={4} value={selNation.treaties} onChange={e => upNation(selNation.id, { treaties: e.target.value })} className="field" /></div>
             <div><label className="label">{t.notes}</label><textarea rows={6} value={selNation.notes} onChange={e => upNation(selNation.id, { notes: e.target.value })} className="field" /></div>
             <Button onClick={() => { setBrush(selNation.id); setTool("pintar"); setSel(null); setPanelOpen(false); }} className="h-auto whitespace-normal rounded bg-primary px-2 py-2 text-sm text-primary-foreground">{t.paintThis}</Button>
-            <Button variant="ghost" onClick={() => setDialog({ type: "confirm", title: t.deleteNation, message: t.confirmDeleteNation, onSubmit: () => { setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id).map(n => n.overlordId === selNation.id ? { ...n, overlordId: undefined } : n), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)), regions: d.regions.filter(r => r.nationId !== selNation.id) })); setSel(null); } })} className="text-sm text-destructive">{t.deleteNation}</Button>
+            <Button variant="ghost" onClick={() => setDialog({ type: "confirm", title: t.deleteNation, message: t.confirmDeleteNation, onSubmit: () => { setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id).map(n => n.overlordId === selNation.id ? { ...n, overlordId: undefined } : n), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)) })); setSel(null); } })} className="text-sm text-destructive">{t.deleteNation}</Button>
           </div>}
 
           {/* Detalhes expandidos para Cidades, Capitais, Fortes e Portos */}
@@ -646,10 +636,9 @@ function readMap(input: unknown): Data {
     return { id: l.id, type: l.type, points: l.points };
   });
   const comments: MapComment[] = Array.isArray(d["comments"]) ? (d["comments"] as MapComment[]).filter(c => c && typeof c.id === "string" && Number.isFinite(c.x) && Number.isFinite(c.y) && typeof c.text === "string").map(c => ({ id: c.id, x: c.x, y: c.y, text: c.text, createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date().toISOString() })) : [];
-  const regions: Region[] = Array.isArray(d["regions"]) ? (d["regions"] as Region[]).filter(q => q && typeof q.id === "string" && typeof q.name === "string" && ids.has(q.nationId) && Array.isArray(q.cells)).map(q => ({ id: q.id, name: q.name, nationId: q.nationId, color: typeof q.color === "string" ? q.color : nations.find(n => n.id === q.nationId)?.color ?? "#888888", cells: [...new Set(q.cells.filter((cell: unknown) => typeof cell === "string" && /^\d+,\d+$/.test(cell) && !!tiles[cell] && tiles[cell] === q.nationId))] })) : [];
   const validNationIds = new Set(nations.map(n => n.id)); for (const nation of nations) if (nation.overlordId && !validNationIds.has(nation.overlordId)) nation.overlordId = undefined;
   for (const nation of nations) { let cursor = nation.overlordId; const seen = new Set([nation.id]); while (cursor) { if (seen.has(cursor)) { nation.overlordId = undefined; break; } seen.add(cursor); cursor = nations.find(n => n.id === cursor)?.overlordId; } }
-  return { ...empty, cellSize: CELL, nations, tiles, markers, lines, comments, regions, showRegions: typeof d["showRegions"] === "boolean" ? d["showRegions"] : true, bg: image(d["bg"]) ?? null,
+  return { ...empty, cellSize: CELL, nations, tiles, markers, lines, comments, bg: image(d["bg"]) ?? null,
     bgOpacity: finite(d["bgOpacity"], 0.6, 0, 1), bgFit: d["bgFit"] === "cover" || d["bgFit"] === "stretch" ? d["bgFit"] : "contain",
     bgScale: finite(d["bgScale"], 1, 0.2, 3), bgX: finite(d["bgX"], 0, -W, W), bgY: finite(d["bgY"], 0, -H, H), bgRotation: finite(d["bgRotation"], 0, -180, 180),
     smooth: typeof d["smooth"] === "boolean" ? d["smooth"] : true, showGrid: typeof d["showGrid"] === "boolean" ? d["showGrid"] : true };
