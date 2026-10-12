@@ -1,18 +1,29 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings } from "lucide-react";
-import { strokeCells, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
+import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins } from "lucide-react";
+import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
 type Relation = "propria" | "aliada" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined };
 type MarkerType = "capital" | "cidade" | "forte" | "porto";
-type Marker = { id: string; type: MarkerType; x: number; y: number; name: string; notes: string };
+type Marker = {
+  id: string;
+  type: MarkerType;
+  x: number;
+  y: number;
+  name: string;
+  notes: string;
+  npcs?: number;
+  grossIncome?: number;
+  expenses?: number;
+  production?: string;
+  photo?: string;
+};
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
 type Data = { cellSize?: number; nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
-type Tool = "mover" | "pintar" | "apagar" | MarkerType | LineType;
+type Tool = "mover" | "pintar" | "balde" | "apagar" | MarkerType | LineType;
 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
 const KEY = "atlas-nacoes-v1";
@@ -20,7 +31,7 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const empty: Data = { cellSize: MAP_CELL, nations: [], tiles: {}, markers: [], lines: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
 const RELS: Relation[] = ["propria", "aliada", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
-const TOOLS: Tool[] = ["mover", "pintar", "apagar", "capital", "cidade", "forte", "porto", "estrada", "rota"];
+const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "capital", "cidade", "forte", "porto", "estrada", "rota"];
 
 type Sel = { kind: "nation"; id: string } | { kind: "marker"; id: string } | { kind: "line"; id: string } | null;
 
@@ -35,6 +46,7 @@ export default function MapApp() {
   const [lang, setLang] = useState<Lang>("pt");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [flagUrl, setFlagUrl] = useState("");
+  const [markerPhotoUrl, setMarkerPhotoUrl] = useState("");
   const t = DICTS[lang];
   const REL: Record<Relation, string> = { propria: t.rel_propria, aliada: t.rel_aliada, neutra: t.rel_neutra, inimiga: t.rel_inimiga };
   const appRef = useRef<HTMLDivElement>(null);
@@ -90,7 +102,7 @@ export default function MapApp() {
   };
   const cellAt = (cx: number, cy: number) => {
     const [wx, wy] = toWorld(cx, cy); const x = Math.floor(wx / CELL), y = Math.floor(wy / CELL);
-    return x >= 0 && y >= 0 && x < COLS && y < ROWS ? `${x},${y}` : null;
+    return x >= 0 && y >= 0 && x < COLS && y < ROWS ? [x, y] as [number, number] : null;
   };
   const paint = useCallback((cx: number, cy: number) => {
     const [wx, wy] = toWorld(cx, cy);
@@ -105,6 +117,7 @@ export default function MapApp() {
       return { ...d, tiles };
     });
   }, [tool, brush, view, brushSize]);
+
   const stopDrag = () => { drag.current = null; lastPaint.current = null; };
   const fitMap = () => {
     const r = ref.current?.getBoundingClientRect(); if (!r) return;
@@ -135,7 +148,9 @@ export default function MapApp() {
     if (e.button === 1 || e.button === 2 || tool === "mover") {
       drag.current = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
       if (tool === "mover" && e.button === 0) {
-        const c = cellAt(e.clientX, e.clientY); const n = c && data.tiles[c];
+        const c = cellAt(e.clientX, e.clientY);
+        const cellKey = c ? `${c[0]},${c[1]}` : null;
+        const n = cellKey && data.tiles[cellKey];
         const nation = n ? nationById(n) : undefined;
         setSel(nation && (filter === "todas" || nation.relation === filter) ? { kind: "nation", id: nation.id } : null);
       }
@@ -145,8 +160,14 @@ export default function MapApp() {
     if (tool === "pintar" || tool === "apagar") {
       if (tool === "pintar" && !brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
       drag.current = { mode: "paint", sx: 0, sy: 0, vx: 0, vy: 0 }; paint(e.clientX, e.clientY);
+    } else if (tool === "balde") {
+      if (!brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
+      const c = cellAt(e.clientX, e.clientY);
+      if (c) {
+        setData(d => ({ ...d, tiles: floodFill(c[0], c[1], brush, d.tiles) }));
+      }
     } else if (tool === "capital" || tool === "cidade" || tool === "forte" || tool === "porto") {
-      const m: Marker = { id: uid(), type: tool, x: wx, y: wy, name: t.newMarker, notes: "" };
+      const m: Marker = { id: uid(), type: tool, x: wx, y: wy, name: t.newMarker, notes: "", npcs: 100, grossIncome: 50, expenses: 20, production: "" };
       setData(d => ({ ...d, markers: [...d.markers, m] })); setSel({ kind: "marker", id: m.id });
     } else {
       setDraft(p => [...p, [wx, wy]]);
@@ -155,7 +176,7 @@ export default function MapApp() {
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current; if (!d) return;
     if (d.mode === "pan") setView(v => ({ ...v, x: d.vx + e.clientX - d.sx, y: d.vy + e.clientY - d.sy }));
-    else paint(e.clientX, e.clientY);
+    else if (d.mode === "paint") paint(e.clientX, e.clientY);
   };
   const finishLine = () => {
     if (draft.length >= 2 && (tool === "estrada" || tool === "rota")) {
@@ -232,14 +253,14 @@ export default function MapApp() {
           <h2 className="label">{t.tools}</h2>
           <div className="grid gap-1">
             {TOOLS.map(id => (
-              <Button variant="ghost" key={id} onClick={() => { setTool(id); setDraft([]); if (id === "pintar" && !brush) { const first = visibleNations[0] ?? data.nations[0]; if (first) setBrush(first.id); else setNotice(t.createFirst); } }}
+              <Button variant="ghost" key={id} onClick={() => { setTool(id); setDraft([]); if ((id === "pintar" || id === "balde") && !brush) { const first = visibleNations[0] ?? data.nations[0]; if (first) setBrush(first.id); else setNotice(t.createFirst); } }}
                 className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{t[id]}</Button>
             ))}
           </div>
           {(tool === "pintar" || tool === "apagar") && <div className="mt-3"><label htmlFor="brush-size" className="label">{t.brushSize} · {brushSize}</label><input id="brush-size" type="range" min={1} max={10} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
           <div className="mt-3 grid gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.smooth} onChange={e => setData(d => ({ ...d, smooth: e.target.checked }))} />{t.smooth}</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.showGrid} onChange={e => setData(d => ({ ...d, showGrid: e.target.checked }))} />{t.grid}</label></div>
           {(tool === "estrada" || tool === "rota") && <Button variant="outline" size="sm" className="mt-2 w-full" disabled={draft.length < 2} onClick={finishLine}>{t.finishLine}</Button>}
-          {tool === "pintar" && (brush && nationById(brush) ? <p className="mt-2 text-sm">{t.paintingWith}: <span style={{ color: nationById(brush)?.color }}>■</span> {nationById(brush)?.name}</p> : <div className="mt-2 grid gap-1"><p className="text-sm text-destructive">{data.nations.length ? t.pickNation : t.createFirst}</p>{!data.nations.length && <Button size="sm" onClick={addNation}>{t.createNation}</Button>}</div>)}
+          {(tool === "pintar" || tool === "balde") && (brush && nationById(brush) ? <p className="mt-2 text-sm">{t.paintingWith}: <span style={{ color: nationById(brush)?.color }}>■</span> {nationById(brush)?.name}</p> : <div className="mt-2 grid gap-1"><p className="text-sm text-destructive">{data.nations.length ? t.pickNation : t.createFirst}</p>{!data.nations.length && <Button size="sm" onClick={addNation}>{t.createNation}</Button>}</div>)}
         </section>
         <section>
           <div className="mb-1 flex items-center justify-between"><h2 className="label !mb-0">{t.nations}</h2><Button variant="ghost" size="sm" onClick={addNation} className="text-sm text-primary hover:underline">{t.newNation}</Button></div>
@@ -288,24 +309,52 @@ export default function MapApp() {
           {data.showGrid && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           {data.lines.map(l => (
             <polyline key={l.id} points={l.points.map(p => p.join(",")).join(" ")} fill="none"
-              className={l.type === "estrada" ? "stroke-foreground" : "stroke-chart-3"} strokeWidth={selLine?.id === l.id ? 6 : 4}
-              strokeDasharray={l.type === "rota" ? "12 8" : undefined} strokeLinecap="round" strokeLinejoin="round"
+              className={l.type === "estrada" ? "stroke-foreground" : "stroke-chart-3"} strokeWidth={selLine?.id === l.id ? 5 : 3}
+              strokeDasharray={l.type === "rota" ? "8 6" : undefined} strokeLinecap="round" strokeLinejoin="round"
               onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); setSel({ kind: "line", id: l.id }); } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, lines: d.lines.filter(x => x.id !== l.id) })); } }} style={{ cursor: "pointer" }} />
           ))}
-          {draft.length > 0 && <polyline points={draft.map(p => p.join(",")).join(" ")} fill="none" className="stroke-primary" strokeWidth={3} strokeDasharray="4 4" />}
-          {data.markers.map(m => (
-            <g key={m.id} transform={`translate(${m.x},${m.y})`} style={{ cursor: "pointer" }}
-              onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); setSel({ kind: "marker", id: m.id }); } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, markers: d.markers.filter(x => x.id !== m.id) })); } }}>
-              <circle r={m.type === "capital" ? 16 : 12} className={selMarker?.id === m.id ? "fill-primary" : "fill-card stroke-foreground"} strokeWidth={2} />
-              <text textAnchor="middle" dy="0.35em" fontSize={m.type === "capital" ? 18 : 13} className="fill-foreground">{ICON[m.type]}</text>
-              <text y={30} textAnchor="middle" fontSize={14} className="fill-foreground font-display" paintOrder="stroke" stroke="var(--background)" strokeWidth={4}>{m.name}</text>
-            </g>
-          ))}
-          {territories.filter(t => filter === "todas" || t.nation.relation === filter).map(({ nation: n, keys: ks }) => { if (!ks.length) return null;
+          {draft.length > 0 && <polyline points={draft.map(p => p.join(",")).join(" ")} fill="none" className="stroke-primary" strokeWidth={2} strokeDasharray="4 4" />}
+          
+          {/* Cidades e marcadores com Campo de Visão por aproximação */}
+          {data.markers.map(m => {
+            const isCapital = m.type === "capital";
+            // Capitais aparecem com zoom a partir de 0.35; outras cidades/portos/fortes só aparecem de perto (zoom >= 0.75)
+            const isVisible = isCapital ? view.z >= 0.35 : view.z >= 0.75;
+            if (!isVisible) return null;
+            const r = isCapital ? 9 : 6;
+
+            return (
+              <g key={m.id} transform={`translate(${m.x},${m.y})`} style={{ cursor: "pointer" }}
+                onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); setSel({ kind: "marker", id: m.id }); } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, markers: d.markers.filter(x => x.id !== m.id) })); } }}>
+                <circle r={r} className={selMarker?.id === m.id ? "fill-primary" : "fill-card stroke-foreground"} strokeWidth={1.5} />
+                <text textAnchor="middle" dy="0.32em" fontSize={isCapital ? 10 : 7} className="fill-foreground font-bold">{ICON[m.type]}</text>
+                <text y={isCapital ? 18 : 14} textAnchor="middle" fontSize={isCapital ? 12 : 10} className="fill-foreground font-display" paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{m.name}</text>
+              </g>
+            );
+          })}
+
+          {/* Nomes dos países com tamanho dinâmico pelo território e limite de zoom */}
+          {territories.filter(t => filter === "todas" || t.nation.relation === filter).map(({ nation: n, keys: ks }) => {
+            if (!ks.length) return null;
             let sx = 0, sy = 0; ks.forEach(k => { const [x = 0, y = 0] = k.split(",").map(Number); sx += x; sy += y; });
             const x = (sx / ks.length + 0.5) * CELL, y = (sy / ks.length + 0.5) * CELL;
-            return <g key={n.id} pointerEvents="none">{n.flag && <image href={n.flag} x={x - 36} y={y - 65} width={72} height={44} preserveAspectRatio="xMidYMid meet" />}<text x={x} y={y} textAnchor="middle" fontSize={30} className="fill-foreground font-display uppercase" opacity={0.9} paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{n.name}</text></g>; })}
+
+            // Escala conforme tamanho da área territorial (com teto para não ficar gigante)
+            const area = ks.length;
+            const baseFontSize = Math.max(12, Math.min(36, Math.round(10 + Math.sqrt(area) * 0.12)));
+            // Quando a visualização estiver de longe, comprime a escala para manter o mapa legível
+            const clampedFontSize = Math.max(10, Math.min(baseFontSize, Math.round(baseFontSize * Math.min(1, Math.max(0.4, view.z * 1.4)))));
+            const flagScale = clampedFontSize / 24;
+
+            return (
+              <g key={n.id} pointerEvents="none">
+                {n.flag && <image href={n.flag} x={x - 20 * flagScale} y={y - 36 * flagScale} width={40 * flagScale} height={24 * flagScale} preserveAspectRatio="xMidYMid meet" />}
+                <text x={x} y={y} textAnchor="middle" fontSize={clampedFontSize} className="fill-foreground font-display uppercase" opacity={0.85} paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{n.name}</text>
+              </g>
+            );
+          })}
         </svg>
+
         <div className="map-toolbar" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
           <Button variant="ghost" size="icon" className="min-[901px]:hidden" aria-label={t.tools} title={t.tools} onClick={() => setPanelOpen(v => !v)}><Menu /></Button>
           <Button variant="ghost" size="icon" aria-label={t.zoomOut} title={t.zoomOut} onClick={() => zoom(0.8)}><Minus /></Button>
@@ -340,14 +389,67 @@ export default function MapApp() {
             <Button onClick={() => { setBrush(selNation.id); setTool("pintar"); setSel(null); setPanelOpen(false); }} className="h-auto whitespace-normal rounded bg-primary px-2 py-2 text-sm text-primary-foreground">{t.paintThis}</Button>
             <Button variant="ghost" onClick={() => { if (!confirm(t.confirmDeleteNation)) return; setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)) })); setSel(null); }} className="text-sm text-destructive">{t.deleteNation}</Button>
           </div>}
+
+          {/* Detalhes expandidos para Cidades, Capitais, Fortes e Portos */}
           {selMarker && <div className="grid gap-3">
             <span className="label">{ICON[selMarker.type]} {t[`m_${selMarker.type}`]}</span>
             <input value={selMarker.name} onChange={e => upMarker(selMarker.id, { name: e.target.value })} className="field font-display text-xl" />
             <select value={selMarker.type} onChange={e => upMarker(selMarker.id, { type: e.target.value as MarkerType })} className="field">
               {(Object.keys(ICON) as MarkerType[]).map(k => <option key={k} value={k}>{t[`m_${k}`]}</option>)}</select>
-            <div><label className="label">{t.notes}</label><textarea rows={6} value={selMarker.notes} onChange={e => upMarker(selMarker.id, { notes: e.target.value })} className="field" /></div>
+
+            {/* Foto do local */}
+            <div>
+              <label className="label">{t.photo}</label>
+              {selMarker.photo && (
+                <div className="mb-2 flex items-center gap-3">
+                  <img src={selMarker.photo} alt={selMarker.name} className="h-20 w-32 rounded border border-border object-cover" />
+                  <Button variant="ghost" size="icon" aria-label={t.removePhoto} onClick={() => upMarker(selMarker.id, { photo: undefined })}><Trash2 /></Button>
+                </div>
+              )}
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded border border-border bg-accent px-3 py-1 text-sm">
+                <Upload className="h-4 w-4" />{t.uploadPhoto}
+                <input type="file" accept="image/*" hidden onChange={e => { onImage(e.target.files?.[0], photo => upMarker(selMarker.id, { photo }), 600); e.target.value = ""; }} />
+              </label>
+              <div className="mt-2 flex gap-1">
+                <input placeholder={t.photoUrl} value={markerPhotoUrl} onChange={e => setMarkerPhotoUrl(e.target.value)} className="field text-xs" />
+                <Button size="sm" variant="outline" disabled={!/^https:\/\//.test(markerPhotoUrl.trim())} onClick={() => { upMarker(selMarker.id, { photo: markerPhotoUrl.trim() }); setMarkerPhotoUrl(""); }}>OK</Button>
+              </div>
+            </div>
+
+            {/* População e Economia em Esmeraldas */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="label flex items-center gap-1"><Users className="h-3 w-3" /> {t.npcs}</label>
+                <input type="number" min={0} value={selMarker.npcs ?? 0} onChange={e => upMarker(selMarker.id, { npcs: Math.max(0, +e.target.value) })} className="field" />
+              </div>
+              <div>
+                <label className="label flex items-center gap-1"><Coins className="h-3 w-3 text-emerald-500" /> {t.grossIncome}</label>
+                <input type="number" min={0} value={selMarker.grossIncome ?? 0} onChange={e => upMarker(selMarker.id, { grossIncome: Math.max(0, +e.target.value) })} className="field" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="label">{t.expenses}</label>
+                <input type="number" min={0} value={selMarker.expenses ?? 0} onChange={e => upMarker(selMarker.id, { expenses: Math.max(0, +e.target.value) })} className="field" />
+              </div>
+              <div className="rounded border border-border bg-accent/40 p-2 text-center">
+                <span className="text-[11px] text-muted-foreground">{t.netIncome}</span>
+                <p className={`font-display text-sm font-bold ${((selMarker.grossIncome ?? 0) - (selMarker.expenses ?? 0)) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                  {((selMarker.grossIncome ?? 0) - (selMarker.expenses ?? 0))} 🟢
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="label">{t.production}</label>
+              <input placeholder="Ex: Trigo, Minério de Ferro, Madeira..." value={selMarker.production ?? ""} onChange={e => upMarker(selMarker.id, { production: e.target.value })} className="field" />
+            </div>
+
+            <div><label className="label">{t.notes}</label><textarea rows={4} value={selMarker.notes} onChange={e => upMarker(selMarker.id, { notes: e.target.value })} className="field" /></div>
             <Button variant="ghost" onClick={() => { setData(d => ({ ...d, markers: d.markers.filter(m => m.id !== selMarker.id) })); setSel(null); }} className="text-sm text-destructive">{t.delete}</Button>
           </div>}
+
           {selLine && <div className="grid gap-3">
             <span className="label">{t[`l_${selLine.type}`]} · {selLine.points.length} {t.points}</span>
             <Button variant="ghost" onClick={() => { setData(d => ({ ...d, lines: d.lines.filter(m => m.id !== selLine.id) })); setSel(null); }} className="text-sm text-destructive">{t.deleteLine}</Button>
@@ -371,6 +473,7 @@ function readMap(input: unknown): Data {
   const d = input as Record<string, unknown>;
   if (!Array.isArray(d["nations"]) || !Array.isArray(d["markers"]) || !Array.isArray(d["lines"]) || !d["tiles"] || typeof d["tiles"] !== "object" || Array.isArray(d["tiles"])) throw new Error("Invalid map");
   const text = (value: unknown) => typeof value === "string" ? value : "";
+  const num = (value: unknown, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
   const finite = (value: unknown, fallback: number, min: number, max: number) => typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
   const image = (value: unknown) => typeof value === "string" && /^data:image\/(png|jpeg|webp|gif|avif);base64,/.test(value) ? value : undefined;
   const flagImage = (value: unknown) => image(value) ?? (typeof value === "string" && /^https:\/\/\S+$/.test(value) ? value : undefined);
@@ -389,9 +492,21 @@ function readMap(input: unknown): Data {
     if (x >= COLS || y >= ROWS) throw new Error("Invalid cell");
     tiles[key] = id;
   }
-  const markers: Marker[] = d["markers"].map((m: Marker) => {
+  const markers: Marker[] = d["markers"].map((m: any) => {
     if (!m || typeof m.id !== "string" || !(m.type in ICON) || !Number.isFinite(m.x) || !Number.isFinite(m.y)) throw new Error("Invalid marker");
-    return { id: m.id, type: m.type, x: m.x, y: m.y, name: text(m.name), notes: text(m.notes) };
+    return {
+      id: m.id,
+      type: m.type,
+      x: m.x,
+      y: m.y,
+      name: text(m.name),
+      notes: text(m.notes),
+      npcs: num(m.npcs, 0),
+      grossIncome: num(m.grossIncome, 0),
+      expenses: num(m.expenses, 0),
+      production: text(m.production),
+      photo: flagImage(m.photo),
+    };
   });
   const lines: Line[] = d["lines"].map((l: Line) => {
     if (!l || typeof l.id !== "string" || !["estrada", "rota"].includes(l.type) || !Array.isArray(l.points) || l.points.some(p => !Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite))) throw new Error("Invalid line");
