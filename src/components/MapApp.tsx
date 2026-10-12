@@ -10,9 +10,11 @@ type MapComment = { id: string; x: number; y: number; text: string; createdAt: s
 type Region = { id: string; name: string; nationId: string; color: string; cells: string[] };
 type MapVersion = { id: string; name: string; description: string; createdAt: string; data: Data };
 type MarkerType = "capital" | "cidade" | "forte" | "porto";
+type MarkerShape = "circle" | "square" | "triangle" | "star" | "diamond" | "hexagon" | "cross";
 type Marker = {
   id: string;
   type: MarkerType;
+  shape?: MarkerShape;
   x: number;
   y: number;
   name: string;
@@ -26,6 +28,7 @@ type Marker = {
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
 type Data = { cellSize?: number; nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; regions: Region[]; showRegions: boolean; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
+type AppDialog = { type: "text"; title: string; value: string; onSubmit: (value: string) => void } | { type: "confirm"; title: string; message: string; onSubmit: () => void } | { type: "save"; name: string; description: string; filename: string } | { type: "history"; selectedId: string };
 type Tool = "mover" | "pintar" | "balde" | "apagar" | "comentario" | "regiao" | MarkerType | LineType;
 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
@@ -34,6 +37,7 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const empty: Data = { cellSize: MAP_CELL, nations: [], tiles: {}, markers: [], lines: [], comments: [], regions: [], showRegions: true, bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
 const RELS: Relation[] = ["propria", "aliada", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
+const SHAPES: { id: MarkerShape; label: string }[] = [{ id: "circle", label: "Círculo" }, { id: "square", label: "Quadrado" }, { id: "triangle", label: "Triângulo" }, { id: "star", label: "Estrela" }, { id: "diamond", label: "Losango" }, { id: "hexagon", label: "Hexágono" }, { id: "cross", label: "Cruz" }];
 const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "comentario", "regiao", "capital", "cidade", "forte", "porto", "estrada", "rota"];
 
 type Sel = { kind: "nation"; id: string } | { kind: "marker"; id: string } | { kind: "line"; id: string } | null;
@@ -54,6 +58,7 @@ export default function MapApp() {
   const [mapDescription, setMapDescription] = useState("");
   const [versions, setVersions] = useState<MapVersion[]>([]);
   const [selectedRegionId, setSelectedRegionId] = useState("");
+  const [dialog, setDialog] = useState<AppDialog | null>(null);
 
   const historyRef = useRef<Data[]>([]);
   const historyIndexRef = useRef(-1);
@@ -164,7 +169,7 @@ export default function MapApp() {
       e.preventDefault();
       const v = viewRef.current;
       const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1);
-      const z = Math.min(4, Math.max(0.15, v.z * Math.exp(-dy * 0.0015)));
+      const z = Math.min(4, Math.max(0.05, v.z * Math.exp(-dy * 0.0015)));
       const r = el.getBoundingClientRect(); const px = e.clientX - r.left, py = e.clientY - r.top; const k = z / v.z;
       setView({ z, x: px - (px - v.x) * k, y: py - (py - v.y) * k });
     };
@@ -208,7 +213,7 @@ export default function MapApp() {
   };
   const zoom = (factor: number) => {
     const r = ref.current?.getBoundingClientRect(); if (!r) return;
-    setView(v => { const z = Math.min(4, Math.max(0.1, v.z * factor)); const k = z / v.z;
+    setView(v => { const z = Math.min(4, Math.max(0.05, v.z * factor)); const k = z / v.z;
       return { z, x: r.width / 2 - (r.width / 2 - v.x) * k, y: r.height / 2 - (r.height / 2 - v.y) * k }; });
   };
   const toggleFullscreen = async () => {
@@ -240,8 +245,7 @@ export default function MapApp() {
     }
     const [wx, wy] = toWorld(e.clientX, e.clientY);
     if (tool === "comentario") {
-      const text = window.prompt(lang === "pt" ? "Texto do comentário:" : lang === "es" ? "Texto del comentario:" : "Comment text:");
-      if (text?.trim()) setData(d => ({ ...d, comments: [...d.comments, { id: uid(), x: wx, y: wy, text: text.trim(), createdAt: new Date().toISOString() }] }));
+      setDialog({ type: "text", title: "Texto sobre o mapa", value: "", onSubmit: value => { if (value.trim()) setData(d => ({ ...d, comments: [...d.comments, { id: uid(), x: wx, y: wy, text: value.trim(), createdAt: new Date().toISOString() }] })); } });
     } else if (tool === "regiao") {
       const c = cellAt(e.clientX, e.clientY);
       if (!selectedRegionId) { setNotice(lang === "pt" ? "Crie ou selecione uma região no painel." : "Select a region first."); return; }
@@ -256,7 +260,7 @@ export default function MapApp() {
         setData(d => { const tiles = floodFill(c[0], c[1], brush, d.tiles); return { ...d, tiles, regions: d.regions.map(region => ({ ...region, cells: region.cells.filter(cell => tiles[cell] === region.nationId) })) }; });
       }
     } else if (tool === "capital" || tool === "cidade" || tool === "forte" || tool === "porto") {
-      const m: Marker = { id: uid(), type: tool, x: wx, y: wy, name: t.newMarker, notes: "", npcs: 100, grossIncome: 50, expenses: 20, production: "" };
+      const m: Marker = { id: uid(), type: tool, shape: tool === "capital" ? "star" : tool === "cidade" ? "circle" : tool === "forte" ? "square" : "diamond", x: wx, y: wy, name: t.newMarker, notes: "", npcs: 100, grossIncome: 50, expenses: 20, production: "" };
       setData(d => ({ ...d, markers: [...d.markers, m] })); setSel({ kind: "marker", id: m.id });
     } else {
       setDraft(p => [...p, [wx, wy]]);
@@ -313,10 +317,8 @@ export default function MapApp() {
   };
   const onBg = (f?: File) => onImage(f, bg => setData(d => ({ ...d, bg })));
 
-  const exportJson = () => {
-    const name = window.prompt(lang === "pt" ? "Nome do mapa:" : "Map name:", mapName); if (name === null) return;
-    const description = window.prompt(lang === "pt" ? "Descrição / observações:" : "Description / notes:", mapDescription); if (description === null) return;
-    const requestedFile = window.prompt(lang === "pt" ? "Nome do arquivo (sem .json):" : "File name (without .json):", name || "meu-mundo"); if (requestedFile === null) return;
+  const exportJson = () => setDialog({ type: "save", name: mapName, description: mapDescription, filename: mapName || "meu-mundo" });
+  const completeExport = (name: string, description: string, requestedFile: string) => {
     const now = new Date().toISOString(); const snapshot: MapVersion = { id: uid(), name: name.trim() || "Meu mundo", description: description.trim(), createdAt: now, data: JSON.parse(JSON.stringify(data)) as Data };
     const nextVersions = [...versions, snapshot].slice(-30); setMapName(snapshot.name); setMapDescription(snapshot.description); setVersions(nextVersions);
     const payload = { format: "worldforge-map", version: 3, metadata: { name: snapshot.name, description: snapshot.description, updatedAt: now }, map: data, versions: nextVersions };
@@ -324,13 +326,13 @@ export default function MapApp() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })); const a = document.createElement("a"); a.href = url; a.download = `${safe}.json`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setNotice(lang === "pt" ? "Mapa e histórico exportados em JSON." : "Map and history exported as JSON.");
   };
-  const restoreVersion = (version: MapVersion) => { if (!window.confirm(`Restaurar "${version.name}"?`)) return; setData(readMap(version.data)); setMapName(version.name); setMapDescription(version.description); setNotice("Versão restaurada."); };
+  const restoreVersion = (version: MapVersion) => setDialog({ type: "confirm", title: "Restaurar versão", message: `Restaurar "${version.name}"?`, onSubmit: () => { setData(readMap(version.data)); setMapName(version.name); setMapDescription(version.description); setNotice("Versão restaurada."); } });
   const importJson = async (f?: File) => {
     if (!f) return;
     try {
       const parsed = JSON.parse(await f.text()) as Record<string, unknown>;
       const next = readMap(parsed["map"] ?? parsed);
-      if (!confirm(t.confirmImport)) return;
+      setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { const meta = parsed["metadata"] as { name?: string; description?: string } | undefined; setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); setSelectedRegionId(""); fitMap(); setNotice(t.imported); } }); return;
       const meta = parsed["metadata"] as { name?: string; description?: string } | undefined;
       setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
       if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]);
@@ -339,6 +341,8 @@ export default function MapApp() {
     } catch { setNotice(t.invalidFile); }
   };
 
+  const saveDialog = dialog?.type === "save" ? dialog : null;
+  const historyDialog = dialog?.type === "history" ? dialog : null;
   const selNation = sel?.kind === "nation" ? nationById(sel.id) : undefined;
   const selMarker = sel?.kind === "marker" ? data.markers.find(m => m.id === sel.id) : undefined;
   const selLine = sel?.kind === "line" ? data.lines.find(m => m.id === sel.id) : undefined;
@@ -384,10 +388,10 @@ export default function MapApp() {
           </div>
         </section>
         <section>
-          <div className="mb-2 flex items-center justify-between"><h2 className="label !mb-0">Regiões</h2><Button size="sm" variant="outline" onClick={() => { const name = window.prompt("Nome da região:"); if (!name?.trim()) return; const owner = selNation ?? data.nations[0]; if (!owner) { setNotice("Crie uma nação antes de criar regiões."); return; } const region: Region = { id: uid(), name: name.trim(), nationId: owner.id, color: owner.color, cells: [] }; setData(d => ({ ...d, regions: [...d.regions, region] })); setSelectedRegionId(region.id); setTool("regiao"); }}><Plus className="h-3 w-3" />Nova região</Button></div>
+          <div className="mb-2 flex items-center justify-between"><h2 className="label !mb-0">Regiões</h2><Button size="sm" variant="outline" onClick={() => { const owner = selNation ?? data.nations[0]; if (!owner) { setNotice("Crie uma nação antes de criar regiões."); return; } setDialog({ type: "text", title: "Nova região", value: "", onSubmit: name => { if (!name.trim()) return; const region: Region = { id: uid(), name: name.trim(), nationId: owner.id, color: owner.color, cells: [] }; setData(d => ({ ...d, regions: [...d.regions, region] })); setSelectedRegionId(region.id); setTool("regiao"); } }); }}><Plus className="h-3 w-3" />Nova região</Button></div>
           <p className="mb-2 text-xs text-muted-foreground">Selecione uma região e clique nas células da nação para atribuí-las.</p>
           <select className="field mb-2" value={selectedRegionId} onChange={e => setSelectedRegionId(e.target.value)}><option value="">Todas as regiões</option>{data.regions.map(q => <option key={q.id} value={q.id}>{q.name} — {nationById(q.nationId)?.name ?? "?"}</option>)}</select>
-          {data.regions.map(q => <div key={q.id} className="mb-1 flex items-center gap-1 text-xs"><span className="h-3 w-3 rounded-sm" style={{ background: q.color }} /><button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => { setSelectedRegionId(q.id); setTool("regiao"); }}>{q.name} ({q.cells.length})</button><button onClick={() => { const n = window.prompt("Novo nome:", q.name); if (n?.trim()) setData(d => ({ ...d, regions: d.regions.map(v => v.id === q.id ? { ...v, name: n.trim() } : v) })); }}>✎</button><button onClick={() => { if (confirm("Excluir região?")) { setData(d => ({ ...d, regions: d.regions.filter(v => v.id !== q.id) })); if (selectedRegionId === q.id) setSelectedRegionId(""); } }}>×</button></div>)}
+          {data.regions.map(q => <div key={q.id} className="mb-1 flex items-center gap-1 text-xs"><span className="h-3 w-3 rounded-sm" style={{ background: q.color }} /><button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => { setSelectedRegionId(q.id); setTool("regiao"); }}>{q.name} ({q.cells.length})</button><button onClick={() => setDialog({ type: "text", title: "Renomear região", value: q.name, onSubmit: n => { if (n.trim()) setData(d => ({ ...d, regions: d.regions.map(v => v.id === q.id ? { ...v, name: n.trim() } : v) })); } })}>✎</button><button onClick={() => setDialog({ type: "confirm", title: "Excluir região", message: `Excluir "${q.name}"?`, onSubmit: () => { setData(d => ({ ...d, regions: d.regions.filter(v => v.id !== q.id) })); if (selectedRegionId === q.id) setSelectedRegionId(""); } })}>×</button></div>)}
         </section>
         <section>
           <h2 className="label">{t.bgMap}</h2>
@@ -402,9 +406,9 @@ export default function MapApp() {
         </section>
         <section className="mt-auto grid gap-1 text-sm">
           <Button variant="outline" onClick={exportJson} className="rounded border border-border px-2 py-1 hover:bg-accent"><Download />Salvar mapa / versões</Button>
-          <Button variant="outline" onClick={() => { if (!versions.length) { alert("Nenhuma versão salva ainda. Salve o mapa para criar a primeira."); return; } const list = [...versions].reverse(); alert(list.map((v, i) => `${i + 1}. ${v.name} — ${new Date(v.createdAt).toLocaleString()}`).join("\n")); const choice = Number(prompt("Número da versão para restaurar (Cancelar para sair):")); if (Number.isInteger(choice) && choice >= 1 && choice <= list.length) restoreVersion(list[choice - 1]); }}><History className="h-4 w-4" />Histórico de versões</Button>
+          <Button variant="outline" onClick={() => { if (!versions.length) { setNotice("Nenhuma versão salva ainda. Salve o mapa para criar a primeira."); return; } setDialog({ type: "history", selectedId: versions[versions.length - 1]?.id ?? "" }); }}><History className="h-4 w-4" />Histórico de versões</Button>
           <Button variant="outline" onClick={() => importRef.current?.click()}><Upload />{t.importWorld}</Button>
-          <Button variant="ghost" onClick={() => { if (confirm(t.confirmClear)) { setData(empty); setSel(null); setBrush(null); setDraft([]); } }} className="text-xs text-destructive">{t.clearMap}</Button>
+          <Button variant="ghost" onClick={() => setDialog({ type: "confirm", title: t.clearMap, message: t.confirmClear, onSubmit: () => { setData(empty); setSel(null); setBrush(null); setDraft([]); } })} className="text-xs text-destructive">{t.clearMap}</Button>
         </section>
       </aside>
 
@@ -421,7 +425,7 @@ export default function MapApp() {
           {territories.filter(t => filter === "todas" || t.nation.relation === filter).map(t => <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />)}
           {data.showGrid && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           {data.showRegions && data.regions.filter(q => !selectedRegionId || q.id === selectedRegionId).map(q => q.cells.map(key => { const [x, y] = key.split(",").map(Number); return <rect key={`${q.id}-${key}`} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill={q.color} fillOpacity={0.18} stroke={q.color} strokeWidth={0.7} pointerEvents="none" />; }))}
-          {data.comments.map(comment => <g key={comment.id} transform={`translate(${comment.x},${comment.y})`} style={{ cursor: "pointer" }} onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); const next = prompt("Editar comentário (vazio exclui):", comment.text); if (next === null) return; if (!next.trim()) setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); else setData(d => ({ ...d, comments: d.comments.map(c => c.id === comment.id ? { ...c, text: next.trim() } : c) })); } }}><circle r={8} fill="#f59e0b" stroke="#78350f" strokeWidth={1.5} /><text textAnchor="middle" dy="0.32em" fontSize={10} fill="#111827">!</text><title>{comment.text}</title></g>)}
+          {data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={18} fontWeight={600} className="fill-foreground" paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: "pointer", userSelect: "none" }} onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); setDialog({ type: "text", title: "Editar texto do mapa", value: comment.text, onSubmit: value => { if (!value.trim()) setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); else setData(d => ({ ...d, comments: d.comments.map(c => c.id === comment.id ? { ...c, text: value.trim() } : c) })); } }); } }}>{comment.text}</text>)}
           {data.lines.map(l => (
             <polyline key={l.id} points={l.points.map(p => p.join(",")).join(" ")} fill="none"
               className={l.type === "estrada" ? "stroke-foreground" : "stroke-chart-3"} strokeWidth={selLine?.id === l.id ? 5 : 3}
@@ -434,14 +438,14 @@ export default function MapApp() {
           {data.markers.map(m => {
             const isCapital = m.type === "capital";
             // Capitais aparecem com zoom a partir de 0.35; outras cidades/portos/fortes só aparecem de perto (zoom >= 0.75)
-            const isVisible = isCapital ? view.z >= 0.35 : view.z >= 0.75;
+            const isVisible = isCapital ? view.z >= 0.2 : view.z >= 0.25;
             if (!isVisible) return null;
             const r = isCapital ? 9 : 6;
 
             return (
               <g key={m.id} transform={`translate(${m.x},${m.y})`} style={{ cursor: "pointer" }}
                 onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); setSel({ kind: "marker", id: m.id }); } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, markers: d.markers.filter(x => x.id !== m.id) })); } }}>
-                <circle r={r} className={selMarker?.id === m.id ? "fill-primary" : "fill-card stroke-foreground"} strokeWidth={1.5} />
+                {(() => { const shape = m.shape ?? (m.type === "capital" ? "star" : m.type === "forte" ? "square" : m.type === "porto" ? "diamond" : "circle"); const fill = selMarker?.id === m.id ? "var(--primary)" : "var(--card)"; const stroke = "var(--foreground)"; const pts = shape === "triangle" ? "0,-9 9,8 -9,8" : shape === "diamond" ? "0,-9 9,0 0,9 -9,0" : shape === "hexagon" ? "-8,-5 0,-9 8,-5 8,5 0,9 -8,5" : shape === "cross" ? "-3,-9 3,-9 3,-3 9,-3 9,3 3,3 3,9 -3,9 -3,3 -9,3 -9,-3 -3,-3" : ""; return shape === "circle" ? <circle r={r} fill={fill} stroke={stroke} strokeWidth={1.5} /> : shape === "square" ? <rect x={-r} y={-r} width={r*2} height={r*2} fill={fill} stroke={stroke} strokeWidth={1.5} /> : shape === "star" ? <polygon points="0,-10 2.8,-3.2 9.5,-3.1 4.2,1.2 6.2,8 0,4.2 -6.2,8 -4.2,1.2 -9.5,-3.1 -2.8,-3.2" fill={fill} stroke={stroke} strokeWidth={1.5} /> : <polygon points={pts} fill={fill} stroke={stroke} strokeWidth={1.5} />; })()}
                 <text textAnchor="middle" dy="0.32em" fontSize={isCapital ? 10 : 7} className="fill-foreground font-bold">{ICON[m.type]}</text>
                 <text y={isCapital ? 18 : 14} textAnchor="middle" fontSize={isCapital ? 12 : 10} className="fill-foreground font-display" paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{m.name}</text>
               </g>
@@ -513,7 +517,7 @@ export default function MapApp() {
             <div><label className="label">{t.treaties}</label><textarea rows={4} value={selNation.treaties} onChange={e => upNation(selNation.id, { treaties: e.target.value })} className="field" /></div>
             <div><label className="label">{t.notes}</label><textarea rows={6} value={selNation.notes} onChange={e => upNation(selNation.id, { notes: e.target.value })} className="field" /></div>
             <Button onClick={() => { setBrush(selNation.id); setTool("pintar"); setSel(null); setPanelOpen(false); }} className="h-auto whitespace-normal rounded bg-primary px-2 py-2 text-sm text-primary-foreground">{t.paintThis}</Button>
-            <Button variant="ghost" onClick={() => { if (!confirm(t.confirmDeleteNation)) return; setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id).map(n => n.overlordId === selNation.id ? { ...n, overlordId: undefined } : n), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)), regions: d.regions.filter(r => r.nationId !== selNation.id) })); setSel(null); }} className="text-sm text-destructive">{t.deleteNation}</Button>
+            <Button variant="ghost" onClick={() => setDialog({ type: "confirm", title: t.deleteNation, message: t.confirmDeleteNation, onSubmit: () => { setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id).map(n => n.overlordId === selNation.id ? { ...n, overlordId: undefined } : n), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)), regions: d.regions.filter(r => r.nationId !== selNation.id) })); setSel(null); } })} className="text-sm text-destructive">{t.deleteNation}</Button>
           </div>}
 
           {/* Detalhes expandidos para Cidades, Capitais, Fortes e Portos */}
@@ -522,6 +526,7 @@ export default function MapApp() {
             <input value={selMarker.name} onChange={e => upMarker(selMarker.id, { name: e.target.value })} className="field font-display text-xl" />
             <select value={selMarker.type} onChange={e => upMarker(selMarker.id, { type: e.target.value as MarkerType })} className="field">
               {(Object.keys(ICON) as MarkerType[]).map(k => <option key={k} value={k}>{t[`m_${k}`]}</option>)}</select>
+            <div><label className="label">Forma do símbolo</label><select value={selMarker.shape ?? (selMarker.type === "capital" ? "star" : selMarker.type === "forte" ? "square" : selMarker.type === "porto" ? "diamond" : "circle")} onChange={e => upMarker(selMarker.id, { shape: e.target.value as MarkerShape })} className="field">{SHAPES.map(shape => <option key={shape.id} value={shape.id}>{shape.label}</option>)}</select></div>
 
             {/* Foto do local */}
             <div>
@@ -582,6 +587,7 @@ export default function MapApp() {
           </div>}
         </aside>
       )}
+      {dialog && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) setDialog(null); }}><section role="dialog" aria-modal="true" aria-label={dialog.type === "save" ? "Salvar mapa" : dialog.type === "history" ? "Histórico de versões" : dialog.title} className="w-full max-w-lg rounded-lg border border-border bg-card p-5 text-card-foreground shadow-xl"><div className="mb-4 flex items-center justify-between"><h2 className="font-display text-xl">{dialog.type === "save" ? "Salvar mapa e criar versão" : dialog.type === "history" ? "Histórico de versões" : dialog.title}</h2><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setDialog(null)}><X /></Button></div>{dialog.type === "text" && <div className="grid gap-3"><textarea autoFocus rows={4} value={dialog.value} onChange={e => setDialog(d => d?.type === "text" ? { ...d, value: e.target.value } : d)} className="field" placeholder="Digite o texto..." /><p className="text-xs text-muted-foreground">Deixe vazio para excluir um texto existente.</p><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { const current = dialog; if (current.type === "text") current.onSubmit(current.value); setDialog(null); }}>Aplicar</Button></div></div>}{dialog.type === "confirm" && <div className="grid gap-4"><p>{dialog.message}</p><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { const current = dialog; if (current.type === "confirm") current.onSubmit(); setDialog(null); }}>Confirmar</Button></div></div>}{saveDialog && <div className="grid gap-3"><label className="label">Nome do mapa<input className="field mt-1" value={saveDialog.name} onChange={e => setDialog(d => d?.type === "save" ? { ...d, name: e.target.value } : d)} /></label><label className="label">Descrição / observações<textarea rows={3} className="field mt-1" value={saveDialog.description} onChange={e => setDialog(d => d?.type === "save" ? { ...d, description: e.target.value } : d)} /></label><label className="label">Nome do arquivo (sem .json)<input className="field mt-1" value={saveDialog.filename} onChange={e => setDialog(d => d?.type === "save" ? { ...d, filename: e.target.value } : d)} /></label><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { completeExport(saveDialog.name, saveDialog.description, saveDialog.filename); setDialog(null); }}>Salvar e exportar</Button></div></div>}{historyDialog && <div className="grid gap-3"><label className="label">Escolha uma versão<select className="field mt-1" value={historyDialog.selectedId} onChange={e => setDialog(d => d?.type === "history" ? { ...d, selectedId: e.target.value } : d)}>{[...versions].reverse().map(v => <option key={v.id} value={v.id}>{v.name} — {new Date(v.createdAt).toLocaleString()}</option>)}</select></label><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { const version = versions.find(v => v.id === historyDialog.selectedId); if (version) restoreVersion(version); setDialog(null); }}>Restaurar versão</Button></div></div>}</section></div>}
     </div>
   );
 }
@@ -632,6 +638,7 @@ function readMap(input: unknown): Data {
       expenses: num(m.expenses, 0),
       production: text(m.production),
       photo: flagImage(m.photo),
+      shape: ["circle", "square", "triangle", "star", "diamond", "hexagon", "cross"].includes(m.shape) ? m.shape : (m.type === "capital" ? "star" : m.type === "forte" ? "square" : m.type === "porto" ? "diamond" : "circle"),
     };
   });
   const lines: Line[] = d["lines"].map((l: Line) => {
