@@ -29,6 +29,71 @@ export function strokeCells(from: [number, number], to: [number, number], radius
   return result;
 }
 
+/** Preenchimento tipo balde de tinta em áreas contíguas/circuladas */
+export function floodFill(
+  startX: number,
+  startY: number,
+  fillId: string,
+  tiles: Record<string, string>,
+  cols = MAP_COLS,
+  rows = MAP_ROWS,
+  maxCells = 80000
+): Record<string, string> {
+  const startKey = `${startX},${startY}`;
+  const targetId = tiles[startKey] ?? "";
+  if (targetId === fillId) return tiles;
+
+  const nextTiles = { ...tiles };
+  const queueX = new Int32Array(maxCells + 100);
+  const queueY = new Int32Array(maxCells + 100);
+  let head = 0;
+  let tail = 0;
+
+  queueX[tail] = startX;
+  queueY[tail] = startY;
+  tail++;
+
+  const visited = new Set<string>();
+  visited.add(startKey);
+
+  while (head < tail && tail < maxCells) {
+    const x = queueX[head];
+    const y = queueY[head];
+    head++;
+
+    const key = `${x},${y}`;
+    if (fillId) nextTiles[key] = fillId;
+    else delete nextTiles[key];
+
+    const neighbors = [
+      [x + 1, y],
+      [x - 1, y],
+      [x, y + 1],
+      [x, y - 1],
+    ];
+
+    for (let i = 0; i < 4; i++) {
+      const [nx, ny] = neighbors[i];
+      if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+        const nKey = `${nx},${ny}`;
+        if (!visited.has(nKey)) {
+          visited.add(nKey);
+          const nVal = tiles[nKey] ?? "";
+          if (nVal === targetId) {
+            if (tail < maxCells) {
+              queueX[tail] = nx;
+              queueY[tail] = ny;
+              tail++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return nextTiles;
+}
+
 /** Trace exposed edges into closed contours; round corners without seams between tiles. */
 export function territoryPath(keys: string[], smooth: boolean) {
   const cells = new Set(keys);
