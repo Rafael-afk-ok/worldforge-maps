@@ -50,6 +50,8 @@ const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "comentario", "capi
 type Sel = { kind: "nation"; id: string } | { kind: "marker"; id: string } | { kind: "line"; id: string } | { kind: "comment"; id: string } | null;
 
 export default function MapApp() {
+  const [mode, setMode] = useState<"home" | "edit" | "view">("home");
+  const [pendingViewer, setPendingViewer] = useState(false);
   const [data, setData] = useState<Data>(empty);
   const [dark, setDark] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -483,11 +485,16 @@ export default function MapApp() {
   };
   const restoreVersion = (version: MapVersion) => setDialog({ type: "confirm", title: tx("Restaurar versão", "Restore version", "Restaurar versión"), message: tx(`Restaurar "${version.name}"?`, `Restore "${version.name}"?`, `¿Restaurar "${version.name}"?`), onSubmit: () => { setData(readMap(version.data)); setMapName(version.name); setMapDescription(version.description); setNotice(tx("Versão restaurada.", "Version restored.", "Versión restaurada.")); } });
   const importJson = async (f?: File) => {
-    if (!f) return;
+    if (!f) { setPendingViewer(false); return; }
     try {
       const parsed = JSON.parse(await f.text()) as Record<string, unknown>;
       const next = readMap(parsed["map"] ?? parsed);
-      setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { const meta = parsed["metadata"] as { name?: string; description?: string } | undefined; setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap(); setNotice(t.imported); } }); return;
+      const meta = parsed["metadata"] as { name?: string; description?: string } | undefined;
+      if (mode === "home" || mode === "view" || pendingViewer) {
+        setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
+        setSel(null); setBrush(null); setDraft([]); setFilter("todas"); setTool("mover"); setMode("view"); setPendingViewer(false); setNotice(t.imported); window.setTimeout(fitMap, 0); return;
+      }
+      setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap(); setNotice(t.imported); } }); return;
       const meta = parsed["metadata"] as { name?: string; description?: string } | undefined;
       setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
       if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]);
@@ -539,6 +546,22 @@ export default function MapApp() {
     { title: tx("4. Dados e comparação", "4. Data and comparison", "4. Datos y comparación"), body: tx("Selecione uma localidade para editar população, receitas, gastos e alimentos. Abra Status do mundo para os totais e Comparar para analisar várias nações e cidades.", "Select a location to edit population, income, expenses, and food. Open World Status for totals and Compare to analyze multiple nations and cities.", "Selecciona una localidad para editar población, ingresos, gastos y alimentos. Abre Estado del mundo para ver los totales y Comparar para analizar varias naciones y ciudades.") },
     { title: tx("5. Salvar e recuperar", "5. Save and restore", "5. Guardar y recuperar"), body: tx("Salvar mapa exporta um arquivo JSON com os dados e histórico. Importe esse arquivo em outro dispositivo para continuar a edição.", "Save Map exports a JSON file containing the data and history. Import it on another device to continue editing.", "Guardar mapa exporta un archivo JSON con los datos y el historial. Impórtalo en otro dispositivo para seguir editando.") },
   ];
+
+  if (mode === "home") return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-6 text-foreground">
+      <div className="w-full max-w-xl rounded-xl border border-border bg-card p-8">
+        <h1 className="font-display text-3xl font-bold text-primary">{t.appName}</h1>
+        <p className="mt-2 text-muted-foreground">{tx("Escolha como deseja usar o mapa.", "Choose how to use the map.", "Elige cómo usar el mapa.")}</p>
+        {languageSetup && <div className="mt-4 flex flex-wrap gap-2">{LANGS.map(option => <Button key={option.id} variant={lang === option.id ? "default" : "outline"} onClick={() => { setLang(option.id); localStorage.setItem("atlas-lang", option.id); setLanguageSetup(false); }}>{option.label}</Button>)}</div>}
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <button className="rounded-lg border border-border p-4 text-left hover:bg-accent" onClick={() => setMode("edit")}><strong>{tx("Modo de edição", "Editing mode", "Modo de edición")}</strong><p className="mt-2 text-sm text-muted-foreground">{tx("Abrir o editor completo.", "Open the full editor.", "Abrir el editor completo.")}</p></button>
+          <button className="rounded-lg border border-border p-4 text-left hover:bg-accent" onClick={() => { setPendingViewer(true); importRef.current?.click(); }}><strong>{tx("Modo de visualização", "View-only mode", "Modo de visualización")}</strong><p className="mt-2 text-sm text-muted-foreground">{tx("Carregar um mapa JSON exportado pelo editor.", "Load a map JSON exported by the editor.", "Cargar un mapa JSON exportado por el editor.")}</p></button>
+        </div>
+        <p className="mt-4 text-xs text-muted-foreground">{tx("A visualização não salva alterações no mapa.", "View mode does not save changes to the map.", "La visualización no guarda cambios en el mapa.")}</p>
+      </div>
+      <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
+    </div>
+  );
 
   return (
     <div ref={appRef} className={`atlas-app relative flex w-full overflow-hidden bg-background text-foreground ${fullscreen ? "atlas-fullscreen" : ""}`}>
