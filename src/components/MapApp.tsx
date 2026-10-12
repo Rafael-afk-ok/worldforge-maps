@@ -5,10 +5,10 @@ import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS,
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
 type Relation = "propria" | "aliada" | "neutra" | "inimiga";
-type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string; enemyIds?: string[] };
-type Alliance = { id: string; name: string; nationIds: string[]; color: string; image?: string };
-type War = { id: string; name: string; attackers: string[]; defenders: string[]; active: boolean; startedAt: string; endedAt?: string };
-type MapComment = { id: string; x: number; y: number; text: string; createdAt: string; size?: number; fontFamily?: string; color?: string; rotation?: number };
+type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
+type Alliance = { id: string; name: string; nationIds: string[]; color: string; image?: string | undefined };
+type War = { id: string; name: string; attackers: string[]; defenders: string[]; active: boolean; startedAt: string; endedAt?: string | undefined };
+type MapComment = { id: string; x: number; y: number; text: string; createdAt: string; size?: number; fontFamily?: string; color?: string | undefined; rotation?: number };
 type MapVersion = { id: string; name: string; description: string; createdAt: string; data: Data };
 type MarkerType = "capital" | "cidade" | "forte" | "porto";
 type MarkerShape = "circle" | "square" | "triangle" | "star" | "diamond" | "hexagon" | "cross";
@@ -26,8 +26,8 @@ type Marker = {
   production?: string;
   foodProduction?: number;
   foodConsumption?: number;
-  photo?: string;
-  color?: string;
+  photo?: string | undefined;
+  color?: string | undefined;
   size?: number;
   labelSize?: number;
   rotation?: number;
@@ -554,7 +554,7 @@ export default function MapApp() {
     { title: tx("5. Salvar e recuperar", "5. Save and restore", "5. Guardar y recuperar"), body: tx("Salvar mapa exporta um arquivo JSON com os dados e histórico. Importe esse arquivo em outro dispositivo para continuar a edição.", "Save Map exports a JSON file containing the data and history. Import it on another device to continue editing.", "Guardar mapa exporta un archivo JSON con los datos y el historial. Impórtalo en otro dispositivo para seguir editando.") },
   ];
 
-  const activeHomeTheme = HOME_THEMES.find(theme => theme.id === homeTheme) ?? HOME_THEMES[0];
+  const activeHomeTheme = HOME_THEMES.find(theme => theme.id === homeTheme) ?? HOME_THEMES[0]!;
 
   if (mode === "home") return (
     <div className={`min-h-screen flex items-center justify-center p-4 sm:p-6 ${activeHomeTheme.background} ${activeHomeTheme.foreground} transition-colors`}>
