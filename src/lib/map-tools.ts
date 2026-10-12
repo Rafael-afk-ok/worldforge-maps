@@ -1,6 +1,6 @@
-export const MAP_COLS = 240;
-export const MAP_ROWS = 160;
-export const MAP_CELL = 10;
+export const MAP_COLS = 1200;
+export const MAP_ROWS = 800;
+export const MAP_CELL = 2;
 
 /** Older maps used larger tiles; split each old tile into factor×factor new tiles. */
 export function expandTiles(tiles: Record<string, string>, factor: number) {
