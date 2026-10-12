@@ -1,6 +1,17 @@
-export const MAP_COLS = 120;
-export const MAP_ROWS = 80;
-export const MAP_CELL = 20;
+export const MAP_COLS = 240;
+export const MAP_ROWS = 160;
+export const MAP_CELL = 10;
+
+/** Older maps used larger tiles; split each old tile into factor×factor new tiles. */
+export function expandTiles(tiles: Record<string, string>, factor: number) {
+  if (factor <= 1) return { ...tiles };
+  const out: Record<string, string> = {};
+  for (const [key, id] of Object.entries(tiles)) {
+    const [x = 0, y = 0] = key.split(',').map(Number);
+    for (let dx = 0; dx < factor; dx++) for (let dy = 0; dy < factor; dy++) out[`${x * factor + dx},${y * factor + dy}`] = id;
+  }
+  return out;
+}
 
 /** Sample every crossed cell, even when pointer events arrive far apart. */
 export function strokeCells(from: [number, number], to: [number, number], radius: number) {
