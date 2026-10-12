@@ -366,33 +366,33 @@ function toHex(c: string) {
 function readMap(input: unknown): Data {
   if (!input || typeof input !== "object") throw new Error("Invalid map");
   const d = input as Record<string, unknown>;
-  if (!Array.isArray(d.nations) || !Array.isArray(d.markers) || !Array.isArray(d.lines) || !d.tiles || typeof d.tiles !== "object" || Array.isArray(d.tiles)) throw new Error("Invalid map");
+  if (!Array.isArray(d["nations"]) || !Array.isArray(d["markers"]) || !Array.isArray(d["lines"]) || !d["tiles"] || typeof d["tiles"] !== "object" || Array.isArray(d["tiles"])) throw new Error("Invalid map");
   const text = (value: unknown) => typeof value === "string" ? value : "";
   const finite = (value: unknown, fallback: number, min: number, max: number) => typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
   const image = (value: unknown) => typeof value === "string" && /^data:image\/(png|jpeg|webp|gif|avif);base64,/.test(value) ? value : undefined;
-  const nations: Nation[] = d.nations.map((n: Nation) => {
+  const nations: Nation[] = d["nations"].map((n: Nation) => {
     if (!n || typeof n.id !== "string" || !n.id || typeof n.name !== "string" || !(n.relation in REL)) throw new Error("Invalid nation");
     return { id: n.id, name: n.name, color: /^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color) ? n.color : "#888888", relation: n.relation, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: image(n.flag) };
   });
   if (new Set(nations.map(n => n.id)).size !== nations.length) throw new Error("Duplicate nation");
   const ids = new Set(nations.map(n => n.id));
   const tiles: Record<string, string> = {};
-  for (const [key, id] of Object.entries(d.tiles)) {
+  for (const [key, id] of Object.entries(d["tiles"])) {
     if (!/^\d+,\d+$/.test(key) || typeof id !== "string" || !ids.has(id)) throw new Error("Invalid territory");
     const [x = 0, y = 0] = key.split(",").map(Number);
     if (x >= COLS || y >= ROWS) throw new Error("Invalid cell");
     tiles[key] = id;
   }
-  const markers: Marker[] = d.markers.map((m: Marker) => {
+  const markers: Marker[] = d["markers"].map((m: Marker) => {
     if (!m || typeof m.id !== "string" || !(m.type in ICON) || !Number.isFinite(m.x) || !Number.isFinite(m.y)) throw new Error("Invalid marker");
     return { id: m.id, type: m.type, x: m.x, y: m.y, name: text(m.name), notes: text(m.notes) };
   });
-  const lines: Line[] = d.lines.map((l: Line) => {
+  const lines: Line[] = d["lines"].map((l: Line) => {
     if (!l || typeof l.id !== "string" || !["estrada", "rota"].includes(l.type) || !Array.isArray(l.points) || l.points.some(p => !Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite))) throw new Error("Invalid line");
     return { id: l.id, type: l.type, points: l.points };
   });
-  return { ...empty, nations, tiles, markers, lines, bg: image(d.bg) ?? null,
-    bgOpacity: finite(d.bgOpacity, 0.6, 0, 1), bgFit: d.bgFit === "cover" || d.bgFit === "stretch" ? d.bgFit : "contain",
-    bgScale: finite(d.bgScale, 1, 0.2, 3), bgX: finite(d.bgX, 0, -W, W), bgY: finite(d.bgY, 0, -H, H), bgRotation: finite(d.bgRotation, 0, -180, 180),
-    smooth: typeof d.smooth === "boolean" ? d.smooth : true, showGrid: typeof d.showGrid === "boolean" ? d.showGrid : true };
+  return { ...empty, nations, tiles, markers, lines, bg: image(d["bg"]) ?? null,
+    bgOpacity: finite(d["bgOpacity"], 0.6, 0, 1), bgFit: d["bgFit"] === "cover" || d["bgFit"] === "stretch" ? d["bgFit"] : "contain",
+    bgScale: finite(d["bgScale"], 1, 0.2, 3), bgX: finite(d["bgX"], 0, -W, W), bgY: finite(d["bgY"], 0, -H, H), bgRotation: finite(d["bgRotation"], 0, -180, 180),
+    smooth: typeof d["smooth"] === "boolean" ? d["smooth"] : true, showGrid: typeof d["showGrid"] === "boolean" ? d["showGrid"] : true };
 }

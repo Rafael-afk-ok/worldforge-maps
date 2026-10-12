@@ -34,10 +34,11 @@ export function territoryPath(keys: string[], smooth: boolean) {
   while (edges.size) {
     const start = edges.keys().next().value;
     if (!start) break;
-    const points: number[][] = [];
+    const points: [number, number][] = [];
     let current = start;
     for (let guard = 0; guard <= keys.length * 4; guard++) {
-      points.push(current.split(',').map(v => Number(v) * MAP_CELL));
+      const [cx = 0, cy = 0] = current.split(',').map(Number);
+      points.push([cx * MAP_CELL, cy * MAP_CELL]);
       const nexts = edges.get(current);
       const next = nexts?.shift();
       if (!nexts?.length) edges.delete(current);
