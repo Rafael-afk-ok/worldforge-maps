@@ -6,7 +6,7 @@ import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
 type Relation = "propria" | "aliada" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string };
-type MapComment = { id: string; x: number; y: number; text: string; createdAt: string };
+type MapComment = { id: string; x: number; y: number; text: string; createdAt: string; size?: number; fontFamily?: string; color?: string; rotation?: number };
 type MapVersion = { id: string; name: string; description: string; createdAt: string; data: Data };
 type MarkerType = "capital" | "cidade" | "forte" | "porto";
 type MarkerShape = "circle" | "square" | "triangle" | "star" | "diamond" | "hexagon" | "cross";
@@ -25,6 +25,10 @@ type Marker = {
   foodProduction?: number;
   foodConsumption?: number;
   photo?: string;
+  color?: string;
+  size?: number;
+  labelSize?: number;
+  rotation?: number;
 };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
@@ -41,7 +45,7 @@ const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte:
 const SHAPES: { id: MarkerShape; label: string }[] = [{ id: "circle", label: "Círculo" }, { id: "square", label: "Quadrado" }, { id: "triangle", label: "Triângulo" }, { id: "star", label: "Estrela" }, { id: "diamond", label: "Losango" }, { id: "hexagon", label: "Hexágono" }, { id: "cross", label: "Cruz" }];
 const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "comentario", "capital", "cidade", "forte", "porto", "estrada", "rota"];
 
-type Sel = { kind: "nation"; id: string } | { kind: "marker"; id: string } | { kind: "line"; id: string } | null;
+type Sel = { kind: "nation"; id: string } | { kind: "marker"; id: string } | { kind: "line"; id: string } | { kind: "comment"; id: string } | null;
 
 export default function MapApp() {
   const [data, setData] = useState<Data>(empty);
@@ -83,7 +87,7 @@ export default function MapApp() {
   const ref = useRef<HTMLDivElement>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
-  const drag = useRef<{ mode: "pan" | "paint"; sx: number; sy: number; vx: number; vy: number } | null>(null);
+  const drag = useRef<{ mode: "pan" | "paint"; sx: number; sy: number; vx: number; vy: number } | { mode: "entity"; entityKind: "marker" | "comment"; id: string; sx: number; sy: number; wx: number; wy: number } | null>(null);
   const touchPoints = useRef(new Map<number, { x: number; y: number }>());
   const pinchStart = useRef<{ distance: number; zoom: number; worldX: number; worldY: number } | null>(null);
 
@@ -260,7 +264,7 @@ export default function MapApp() {
     }
     const [wx, wy] = toWorld(e.clientX, e.clientY);
     if (tool === "comentario") {
-      setDialog({ type: "text", title: "Texto sobre o mapa", value: "", onSubmit: value => { if (value.trim()) setData(d => ({ ...d, comments: [...d.comments, { id: uid(), x: wx, y: wy, text: value.trim(), createdAt: new Date().toISOString() }] })); } });
+      setDialog({ type: "text", title: "Texto sobre o mapa", value: "", onSubmit: value => { if (value.trim()) setData(d => ({ ...d, comments: [...d.comments, { id: uid(), x: wx, y: wy, text: value.trim(), createdAt: new Date().toISOString(), size: 18, fontFamily: "Arial", rotation: 0 }] })); } });
     } else if (tool === "pintar" || tool === "apagar") {
       if (tool === "pintar" && !brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
       drag.current = { mode: "paint", sx: 0, sy: 0, vx: 0, vy: 0 }; paint(e.clientX, e.clientY);
@@ -288,6 +292,12 @@ export default function MapApp() {
     const d = drag.current; if (!d) return;
     if (d.mode === "pan") setView(v => ({ ...v, x: d.vx + e.clientX - d.sx, y: d.vy + e.clientY - d.sy }));
     else if (d.mode === "paint") paint(e.clientX, e.clientY);
+    else if (d.mode === "entity") {
+      const x = d.wx + (e.clientX - d.sx) / viewRef.current.z;
+      const y = d.wy + (e.clientY - d.sy) / viewRef.current.z;
+      if (d.entityKind === "marker") upMarker(d.id, { x, y });
+      else setData(current => ({ ...current, comments: current.comments.map(c => c.id === d.id ? { ...c, x, y } : c) }));
+    }
   };
   const finishLine = () => {
     if (draft.length >= 2 && (tool === "estrada" || tool === "rota")) {
@@ -362,6 +372,7 @@ export default function MapApp() {
   const selNation = sel?.kind === "nation" ? nationById(sel.id) : undefined;
   const selMarker = sel?.kind === "marker" ? data.markers.find(m => m.id === sel.id) : undefined;
   const selLine = sel?.kind === "line" ? data.lines.find(m => m.id === sel.id) : undefined;
+  const selComment = sel?.kind === "comment" ? data.comments.find(c => c.id === sel.id) : undefined;
   const tileCount = (id: string) => Object.values(data.tiles).filter(t => t === id).length;
   const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
   const worldBalance = worldStats.income - worldStats.expenses;
@@ -451,7 +462,7 @@ export default function MapApp() {
           {territories.filter(t => filter === "todas" || t.nation.relation === filter).map(t => <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />)}
           {data.showGrid && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
-          {data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={18} fontWeight={600} className="fill-foreground" paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: "pointer", userSelect: "none" }} onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); setDialog({ type: "text", title: "Editar texto do mapa", value: comment.text, onSubmit: value => { if (!value.trim()) setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); else setData(d => ({ ...d, comments: d.comments.map(c => c.id === comment.id ? { ...c, text: value.trim() } : c) })); } }); } }}>{comment.text}</text>)}
+          {data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
           {data.lines.map(l => (
             <polyline key={l.id} points={l.points.map(p => p.join(",")).join(" ")} fill="none"
               className={l.type === "estrada" ? "stroke-foreground" : "stroke-chart-3"} strokeWidth={selLine?.id === l.id ? 5 : 3}
@@ -469,11 +480,13 @@ export default function MapApp() {
             const r = isCapital ? 9 : 6;
 
             return (
-              <g key={m.id} transform={`translate(${m.x},${m.y})`} style={{ cursor: "pointer" }}
-                onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); setSel({ kind: "marker", id: m.id }); } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, markers: d.markers.filter(x => x.id !== m.id) })); } }}>
-                {(() => { const shape = m.shape ?? (m.type === "capital" ? "star" : m.type === "forte" ? "square" : m.type === "porto" ? "diamond" : "circle"); const fill = selMarker?.id === m.id ? "var(--primary)" : "var(--card)"; const stroke = "var(--foreground)"; const pts = shape === "triangle" ? "0,-9 9,8 -9,8" : shape === "diamond" ? "0,-9 9,0 0,9 -9,0" : shape === "hexagon" ? "-8,-5 0,-9 8,-5 8,5 0,9 -8,5" : shape === "cross" ? "-3,-9 3,-9 3,-3 9,-3 9,3 3,3 3,9 -3,9 -3,3 -9,3 -9,-3 -3,-3" : ""; return shape === "circle" ? <circle r={r} fill={fill} stroke={stroke} strokeWidth={1.5} /> : shape === "square" ? <rect x={-r} y={-r} width={r*2} height={r*2} fill={fill} stroke={stroke} strokeWidth={1.5} /> : shape === "star" ? <polygon points="0,-10 2.8,-3.2 9.5,-3.1 4.2,1.2 6.2,8 0,4.2 -6.2,8 -4.2,1.2 -9.5,-3.1 -2.8,-3.2" fill={fill} stroke={stroke} strokeWidth={1.5} /> : <polygon points={pts} fill={fill} stroke={stroke} strokeWidth={1.5} />; })()}
-                <text textAnchor="middle" dy="0.32em" fontSize={isCapital ? 10 : 7} className="fill-foreground font-bold">{ICON[m.type]}</text>
-                <text y={isCapital ? 18 : 14} textAnchor="middle" fontSize={isCapital ? 12 : 10} className="fill-foreground font-display" paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{m.name}</text>
+              <g key={m.id} transform={`translate(${m.x},${m.y})`} style={{ cursor: tool === "mover" ? "move" : "pointer" }}
+                onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "marker", id: m.id }); drag.current = { mode: "entity", entityKind: "marker", id: m.id, sx: e.clientX, sy: e.clientY, wx: m.x, wy: m.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, markers: d.markers.filter(x => x.id !== m.id) })); } }}>
+                <g transform={`rotate(${m.rotation ?? 0}) scale(${m.size ?? 1})`}>
+                  {(() => { const shape = m.shape ?? (m.type === "capital" ? "star" : m.type === "forte" ? "square" : m.type === "porto" ? "diamond" : "circle"); const fill = m.color ?? (selMarker?.id === m.id ? "var(--primary)" : "var(--card)"); const stroke = "var(--foreground)"; const pts = shape === "triangle" ? "0,-9 9,8 -9,8" : shape === "diamond" ? "0,-9 9,0 0,9 -9,0" : shape === "hexagon" ? "-8,-5 0,-9 8,-5 8,5 0,9 -8,5" : shape === "cross" ? "-3,-9 3,-9 3,-3 9,-3 9,3 3,3 3,9 -3,9 -3,3 -9,3 -9,-3 -3,-3" : ""; return shape === "circle" ? <circle r={r} fill={fill} stroke={stroke} strokeWidth={1.5} /> : shape === "square" ? <rect x={-r} y={-r} width={r*2} height={r*2} fill={fill} stroke={stroke} strokeWidth={1.5} /> : shape === "star" ? <polygon points="0,-10 2.8,-3.2 9.5,-3.1 4.2,1.2 6.2,8 0,4.2 -6.2,8 -4.2,1.2 -9.5,-3.1 -2.8,-3.2" fill={fill} stroke={stroke} strokeWidth={1.5} /> : <polygon points={pts} fill={fill} stroke={stroke} strokeWidth={1.5} />; })()}
+                  <text textAnchor="middle" dy="0.32em" fontSize={isCapital ? 10 : 7} fill={m.color ? "#ffffff" : "var(--foreground)"} className="font-bold">{ICON[m.type]}</text>
+                </g>
+                <text y={isCapital ? 18 : 14} textAnchor="middle" fontSize={m.labelSize ?? (isCapital ? 12 : 10)} className="fill-foreground font-display" paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{m.name}</text>
               </g>
             );
           })}
@@ -522,12 +535,12 @@ export default function MapApp() {
           <Button variant="ghost" size="icon" aria-label={t.settings} title={t.settings} onClick={() => setSettingsOpen(v => !v)}><Settings /></Button>
         </div>
         <div className="pointer-events-none absolute bottom-3 left-3 rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground">{Math.round(view.z * 100)}% · {t[tool]}</div>
-        <div className="absolute left-3 top-3 z-10 grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-border bg-card/95 p-3 text-xs shadow-sm sm:grid-cols-4"><span>População <b>{worldStats.population.toLocaleString("pt-BR")}</b></span><span>Saldo <b className={worldBalance >= 0 ? "text-emerald-600" : "text-destructive"}>{worldBalance.toLocaleString("pt-BR")}</b></span><span>Comida <b className={foodBalance >= 0 ? "text-emerald-600" : "text-destructive"}>{foodBalance.toLocaleString("pt-BR")}</b></span><span>Localidades <b>{data.markers.length}</b></span></div>
+        <div className={`absolute z-10 grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-border bg-card/95 p-2 text-xs shadow-sm sm:grid-cols-4 ${deviceMode === "celular" ? "bottom-3 right-3 max-w-[calc(100%-6rem)]" : "left-3 top-3 p-3"}`}><span>População <b>{worldStats.population.toLocaleString("pt-BR")}</b></span><span>Saldo <b className={worldBalance >= 0 ? "text-emerald-600" : "text-destructive"}>{worldBalance.toLocaleString("pt-BR")}</b></span><span>Comida <b className={foodBalance >= 0 ? "text-emerald-600" : "text-destructive"}</b>{foodBalance.toLocaleString("pt-BR")}</span><span>Localidades <b>{data.markers.length}</b></span></div>
         {settingsOpen && <div role="dialog" aria-label={t.settings} className="absolute right-3 top-16 z-30 w-64 rounded border border-border bg-card p-4 shadow-lg" onPointerDown={e => e.stopPropagation()}><div className="mb-2 flex items-center justify-between"><h2 className="font-display text-xl">{t.settings}</h2><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setSettingsOpen(false)}><X /></Button></div><label htmlFor="device-mode" className="label">Dispositivo</label><select id="device-mode" className="field mb-3" value={deviceMode} onChange={e => setDeviceMode(e.target.value as "pc" | "celular")}><option value="pc">Computador / PC</option><option value="celular">Celular</option></select>{deviceMode === "celular" && <p className="mb-3 text-xs text-muted-foreground">No celular: use dois dedos para aproximar/afastar. O editor exige orientação paisagem.</p>}<label htmlFor="lang" className="label">{t.language}</label><select id="lang" className="field" value={lang} onChange={e => setLang(e.target.value as Lang)}>{LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></div>}
         {notice && <div role="status" className="absolute bottom-12 left-3 right-3 flex items-center justify-between gap-2 rounded border border-border bg-card p-3 text-sm" onPointerDown={e => e.stopPropagation()}>{notice}<Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setNotice("")}><X /></Button></div>}
       </div>
 
-      {(selNation || selMarker || selLine) && (
+      {(selNation || selMarker || selLine || selComment) && (
         <aside className="map-details-panel shrink-0 overflow-y-auto border-l border-border bg-card p-4">
           <div className="mb-3 flex justify-end"><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setSel(null)} className="text-muted-foreground"><X /></Button></div>
           {selNation && <div className="grid gap-3">
@@ -556,6 +569,10 @@ export default function MapApp() {
             <select value={selMarker.type} onChange={e => upMarker(selMarker.id, { type: e.target.value as MarkerType })} className="field">
               {(Object.keys(ICON) as MarkerType[]).map(k => <option key={k} value={k}>{t[`m_${k}`]}</option>)}</select>
             <div><label className="label">Forma do símbolo</label><select value={selMarker.shape ?? (selMarker.type === "capital" ? "star" : selMarker.type === "forte" ? "square" : selMarker.type === "porto" ? "diamond" : "circle")} onChange={e => upMarker(selMarker.id, { shape: e.target.value as MarkerShape })} className="field">{SHAPES.map(shape => <option key={shape.id} value={shape.id}>{shape.label}</option>)}</select></div>
+            <div className="grid grid-cols-2 gap-2"><label className="label">Cor do símbolo<input aria-label="Cor do símbolo" type="color" value={toHex(selMarker.color ?? "#ffffff")} onChange={e => upMarker(selMarker.id, { color: e.target.value })} className="field mt-1 h-10 p-1" /></label><label className="label">Tamanho do símbolo · {Math.round((selMarker.size ?? 1) * 100)}%<input aria-label="Tamanho do símbolo" type="range" min={0.5} max={3} step={0.1} value={selMarker.size ?? 1} onChange={e => upMarker(selMarker.id, { size: +e.target.value })} className="mt-3 w-full" /></label></div>
+            <div className="grid grid-cols-2 gap-2"><label className="label">Rotação · {selMarker.rotation ?? 0}°<input aria-label="Rotação do símbolo" type="range" min={0} max={359} value={selMarker.rotation ?? 0} onChange={e => upMarker(selMarker.id, { rotation: +e.target.value })} className="mt-3 w-full" /></label><label className="label">Tamanho do nome<input aria-label="Tamanho do nome" type="number" min={6} max={40} value={selMarker.labelSize ?? (selMarker.type === "capital" ? 12 : 10)} onChange={e => upMarker(selMarker.id, { labelSize: Math.max(6, Math.min(40, +e.target.value || 6)) })} className="field mt-1" /></label></div>
+            <div className="grid grid-cols-2 gap-2"><label className="label">Posição X<input aria-label="Posição X" type="number" value={Math.round(selMarker.x)} onChange={e => upMarker(selMarker.id, { x: +e.target.value || 0 })} className="field mt-1" /></label><label className="label">Posição Y<input aria-label="Posição Y" type="number" value={Math.round(selMarker.y)} onChange={e => upMarker(selMarker.id, { y: +e.target.value || 0 })} className="field mt-1" /></label></div>
+            <p className="text-xs text-muted-foreground">Arraste a localidade no mapa para reposicioná-la.</p>
 
             {/* Foto do local */}
             <div>
@@ -611,6 +628,16 @@ export default function MapApp() {
             <Button variant="ghost" onClick={() => { setData(d => ({ ...d, markers: d.markers.filter(m => m.id !== selMarker.id) })); setSel(null); }} className="text-sm text-destructive">{t.delete}</Button>
           </div>}
 
+          {selComment && <div className="grid gap-3">
+            <span className="label">Texto no mapa</span>
+            <textarea aria-label="Texto do comentário" rows={4} value={selComment.text} onChange={e => setData(d => ({ ...d, comments: d.comments.map(c => c.id === selComment.id ? { ...c, text: e.target.value } : c) }))} className="field" />
+            <div className="grid grid-cols-2 gap-2"><label className="label">Tamanho · {selComment.size ?? 18}px<input aria-label="Tamanho do texto" type="range" min={8} max={64} value={selComment.size ?? 18} onChange={e => setData(d => ({ ...d, comments: d.comments.map(c => c.id === selComment.id ? { ...c, size: +e.target.value } : c) }))} className="mt-2 w-full" /></label><label className="label">Rotação · {selComment.rotation ?? 0}°<input aria-label="Rotação do texto" type="range" min={-180} max={180} value={selComment.rotation ?? 0} onChange={e => setData(d => ({ ...d, comments: d.comments.map(c => c.id === selComment.id ? { ...c, rotation: +e.target.value } : c) }))} className="mt-2 w-full" /></label></div>
+            <label className="label">Fonte<select aria-label="Fonte do texto" value={selComment.fontFamily ?? "Arial"} onChange={e => setData(d => ({ ...d, comments: d.comments.map(c => c.id === selComment.id ? { ...c, fontFamily: e.target.value } : c) }))} className="field mt-1"><option>Arial</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option><option>Courier New</option><option>Trebuchet MS</option></select></label>
+            <label className="label">Cor do texto<input aria-label="Cor do texto" type="color" value={toHex(selComment.color ?? "#222222")} onChange={e => setData(d => ({ ...d, comments: d.comments.map(c => c.id === selComment.id ? { ...c, color: e.target.value } : c) }))} className="field mt-1 h-10 p-1" /></label>
+            <div className="grid grid-cols-2 gap-2"><label className="label">Posição X<input aria-label="Posição X do texto" type="number" value={Math.round(selComment.x)} onChange={e => setData(d => ({ ...d, comments: d.comments.map(c => c.id === selComment.id ? { ...c, x: +e.target.value || 0 } : c) }))} className="field mt-1" /></label><label className="label">Posição Y<input aria-label="Posição Y do texto" type="number" value={Math.round(selComment.y)} onChange={e => setData(d => ({ ...d, comments: d.comments.map(c => c.id === selComment.id ? { ...c, y: +e.target.value || 0 } : c) }))} className="field mt-1" /></label></div>
+            <p className="text-xs text-muted-foreground">Arraste o texto no mapa para reposicioná-lo.</p>
+            <Button variant="ghost" onClick={() => { setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== selComment.id) })); setSel(null); }} className="text-sm text-destructive">Excluir texto</Button>
+          </div>}
           {selLine && <div className="grid gap-3">
             <span className="label">{t[`l_${selLine.type}`]} · {selLine.points.length} {t.points}</span>
             <Button variant="ghost" onClick={() => { setData(d => ({ ...d, lines: d.lines.filter(m => m.id !== selLine.id) })); setSel(null); }} className="text-sm text-destructive">{t.deleteLine}</Button>
@@ -671,13 +698,17 @@ function readMap(input: unknown): Data {
       production: text(m.production),
       photo: flagImage(m.photo),
       shape: ["circle", "square", "triangle", "star", "diamond", "hexagon", "cross"].includes(m.shape) ? m.shape : (m.type === "capital" ? "star" : m.type === "forte" ? "square" : m.type === "porto" ? "diamond" : "circle"),
+      color: typeof m.color === "string" && /^#[0-9a-f]{6}$/i.test(m.color) ? m.color : undefined,
+      size: finite(m.size, 1, 0.5, 3),
+      labelSize: finite(m.labelSize, m.type === "capital" ? 12 : 10, 6, 40),
+      rotation: finite(m.rotation, 0, 0, 359),
     };
   });
   const lines: Line[] = d["lines"].map((l: Line) => {
     if (!l || typeof l.id !== "string" || !["estrada", "rota"].includes(l.type) || !Array.isArray(l.points) || l.points.some(p => !Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite))) throw new Error("Invalid line");
     return { id: l.id, type: l.type, points: l.points };
   });
-  const comments: MapComment[] = Array.isArray(d["comments"]) ? (d["comments"] as MapComment[]).filter(c => c && typeof c.id === "string" && Number.isFinite(c.x) && Number.isFinite(c.y) && typeof c.text === "string").map(c => ({ id: c.id, x: c.x, y: c.y, text: c.text, createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date().toISOString() })) : [];
+  const comments: MapComment[] = Array.isArray(d["comments"]) ? (d["comments"] as MapComment[]).filter(c => c && typeof c.id === "string" && Number.isFinite(c.x) && Number.isFinite(c.y) && typeof c.text === "string").map(c => ({ id: c.id, x: c.x, y: c.y, text: c.text, createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date().toISOString(), size: finite(c.size, 18, 8, 64), fontFamily: typeof c.fontFamily === "string" && ["Arial", "Georgia", "Times New Roman", "Verdana", "Courier New", "Trebuchet MS"].includes(c.fontFamily) ? c.fontFamily : "Arial", color: typeof c.color === "string" && /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : undefined, rotation: finite(c.rotation, 0, -180, 180) })) : [];
   const validNationIds = new Set(nations.map(n => n.id)); for (const nation of nations) if (nation.overlordId && !validNationIds.has(nation.overlordId)) nation.overlordId = undefined;
   for (const nation of nations) { let cursor = nation.overlordId; const seen = new Set([nation.id]); while (cursor) { if (seen.has(cursor)) { nation.overlordId = undefined; break; } seen.add(cursor); cursor = nations.find(n => n.id === cursor)?.overlordId; } }
   return { ...empty, cellSize: CELL, nations, tiles, markers, lines, comments, bg: image(d["bg"]) ?? null,
