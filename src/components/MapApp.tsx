@@ -245,7 +245,7 @@ export default function MapApp() {
     } else if (tool === "regiao") {
       const c = cellAt(e.clientX, e.clientY);
       if (!selectedRegionId) { setNotice(lang === "pt" ? "Crie ou selecione uma região no painel." : "Select a region first."); return; }
-      if (c) { const key = `${c[0]},${c[1]}`; setData(d => { const region = d.regions.find(q => q.id === selectedRegionId); if (!region || d.tiles[key] !== region.nationId) { setNotice(lang === "pt" ? "A célula precisa pertencer à nação desta região." : "Cell must belong to the region nation."); return d; } return { ...d, regions: d.regions.map(q => q.id === selectedRegionId ? { ...q, cells: q.cells.includes(key) ? q.cells : [...q.cells, key] } : { ...q, cells: q.cells.filter(cell => cell !== key) }) }; }); }
+      if (c) { const key = `${c[0]},${c[1]}`; const region = data.regions.find(q => q.id === selectedRegionId); if (!region || data.tiles[key] !== region.nationId) { setNotice(lang === "pt" ? "A célula precisa pertencer à nação desta região." : "Cell must belong to the region nation."); return; } setData(d => ({ ...d, regions: d.regions.map(q => q.id === selectedRegionId ? { ...q, cells: q.cells.includes(key) ? q.cells : [...q.cells, key] } : { ...q, cells: q.cells.filter(cell => cell !== key) }) })); }
     } else if (tool === "pintar" || tool === "apagar") {
       if (tool === "pintar" && !brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
       drag.current = { mode: "paint", sx: 0, sy: 0, vx: 0, vy: 0 }; paint(e.clientX, e.clientY);
@@ -281,13 +281,13 @@ export default function MapApp() {
     const n: Nation = { id: uid(), name: t.newNationName, color: `hsl(${Math.floor(Math.random() * 360)} 55% 50%)`, relation: data.nations.length ? "neutra" : "propria", ruler: "", treaties: "", notes: "" };
     setData(d => ({ ...d, nations: [...d.nations, n] })); setBrush(n.id); setSel({ kind: "nation", id: n.id }); setTool("pintar"); setNotice("");
   };
-  const upNation = (id: string, p: Partial<Nation>) => setData(d => {
-    const current = d.nations.find(n => n.id === id); if (!current) return d;
+  const upNation = (id: string, p: Partial<Nation>) => {
+    const current = data.nations.find(n => n.id === id); if (!current) return;
     const overlord = Object.prototype.hasOwnProperty.call(p, "overlordId") ? p.overlordId : current.overlordId;
-    if (overlord === id) { setNotice("Uma nação não pode ser vassala de si mesma."); return d; }
-    if (overlord) { let cursor: string | undefined = overlord; const seen = new Set<string>([id]); while (cursor) { if (seen.has(cursor)) { setNotice("Essa relação criaria um ciclo de vassalagem."); return d; } seen.add(cursor); cursor = d.nations.find(n => n.id === cursor)?.overlordId; } }
-    return { ...d, nations: d.nations.map(n => n.id === id ? { ...n, ...p, overlordId: overlord || undefined } : n) };
-  });
+    if (overlord === id) { setNotice("Uma nação não pode ser vassala de si mesma."); return; }
+    if (overlord) { let cursor: string | undefined = overlord; const seen = new Set<string>([id]); while (cursor) { if (seen.has(cursor)) { setNotice("Essa relação criaria um ciclo de vassalagem."); return; } seen.add(cursor); cursor = data.nations.find(n => n.id === cursor)?.overlordId; } }
+    setData(d => ({ ...d, nations: d.nations.map(n => n.id === id ? { ...n, ...p, overlordId: overlord || undefined } : n) }));
+  };
   const upMarker = (id: string, p: Partial<Marker>) => setData(d => ({ ...d, markers: d.markers.map(n => n.id === id ? { ...n, ...p } : n) }));
   const nationById = (id: string) => data.nations.find(n => n.id === id);
 
