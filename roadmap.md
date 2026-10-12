@@ -1,8 +1,8 @@
 # Mapa de nações
-- [ ] Tema escuro e letras estilo Minecraft.
-- [ ] Tela cheia com tentativa de orientação paisagem e controles móveis.
-- [ ] Ajustes de encaixe, escala, posição, rotação e opacidade do fundo.
-- [ ] Filtros de relações e bandeiras das nações.
-- [ ] Exportação/importação completas para backup e transferência entre dispositivos.
-- [ ] Pincel contínuo com tamanho ajustável e bordas suaves.
-- [ ] Verificar edição, salvamento, compatibilidade e apresentação.
+- [x] Tema escuro e letras estilo Minecraft.
+- [x] Tela cheia com tentativa de orientação paisagem e controles móveis.
+- [x] Ajustes de encaixe, escala, posição, rotação e opacidade do fundo.
+- [x] Filtros de relações e bandeiras das nações.
+- [x] Exportação/importação completas para backup e transferência entre dispositivos.
+- [x] Pincel contínuo com tamanho ajustável e bordas suaves.
+- [x] Verificar edição, salvamento, compatibilidade e apresentação.
