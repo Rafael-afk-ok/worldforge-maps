@@ -188,7 +188,7 @@ export default function MapApp() {
           <rect width={W} height={H} className="fill-background" />
           {data.bg && <image href={data.bg} width={W} height={H} preserveAspectRatio="xMidYMid slice" opacity={data.bgOpacity} />}
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
-          {Object.entries(data.tiles).map(([k, id]) => { const n = nationById(id); if (!n) return null; const [x, y] = k.split(",").map(Number);
+          {Object.entries(data.tiles).map(([k, id]) => { const n = nationById(id); if (!n) return null; const [x = 0, y = 0] = k.split(",").map(Number);
             return <rect key={k} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill={n.color} opacity={selNation?.id === id ? 0.85 : 0.6} />; })}
           <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />
           {data.lines.map(l => (
@@ -207,7 +207,7 @@ export default function MapApp() {
             </g>
           ))}
           {data.nations.map(n => { const ks = Object.entries(data.tiles).filter(([, v]) => v === n.id); if (!ks.length) return null;
-            let sx = 0, sy = 0; ks.forEach(([k]) => { const [x, y] = k.split(",").map(Number); sx += x; sy += y; });
+            let sx = 0, sy = 0; ks.forEach(([k]) => { const [x = 0, y = 0] = k.split(",").map(Number); sx += x; sy += y; });
             return <text key={n.id} x={(sx / ks.length + 0.5) * CELL} y={(sy / ks.length + 0.5) * CELL} textAnchor="middle" fontSize={28} pointerEvents="none"
               className="fill-foreground font-display uppercase tracking-widest" opacity={0.75} paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{n.name}</text>; })}
         </svg>
@@ -252,7 +252,7 @@ export default function MapApp() {
 function toHex(c: string) {
   if (c.startsWith("#")) return c;
   const m = c.match(/hsl\((\d+)\s+(\d+)%\s+(\d+)%\)/); if (!m) return "#888888";
-  const h = +m[1], s = +m[2] / 100, l = +m[3] / 100; const a = s * Math.min(l, 1 - l);
+  const h = +m[1]!, s = +m[2]! / 100, l = +m[3]! / 100; const a = s * Math.min(l, 1 - l);
   const f = (n: number) => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, "0"); };
   return `#${f(0)}${f(8)}${f(4)}`;
 }
