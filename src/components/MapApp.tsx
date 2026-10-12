@@ -253,7 +253,7 @@ export default function MapApp() {
       if (!brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
       const c = cellAt(e.clientX, e.clientY);
       if (c) {
-        setData(d => ({ ...d, tiles: floodFill(c[0], c[1], brush, d.tiles) }));
+        setData(d => { const tiles = floodFill(c[0], c[1], brush, d.tiles); return { ...d, tiles, regions: d.regions.map(region => ({ ...region, cells: region.cells.filter(cell => tiles[cell] === region.nationId) })) }; });
       }
     } else if (tool === "capital" || tool === "cidade" || tool === "forte" || tool === "porto") {
       const m: Marker = { id: uid(), type: tool, x: wx, y: wy, name: t.newMarker, notes: "", npcs: 100, grossIncome: 50, expenses: 20, production: "" };
