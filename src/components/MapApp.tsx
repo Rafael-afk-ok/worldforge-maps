@@ -284,6 +284,8 @@ export default function MapApp() {
     });
   };
 
+  useEffect(() => { const id = requestAnimationFrame(fitMap); return () => cancelAnimationFrame(id); }, []);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
