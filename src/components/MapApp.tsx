@@ -60,7 +60,6 @@ export default function MapApp() {
   const [versions, setVersions] = useState<MapVersion[]>([]);
   const [deviceMode, setDeviceMode] = useState<"pc" | "celular">("pc");
   const [orientationPortrait, setOrientationPortrait] = useState(false);
-  const [orientationPortrait, setOrientationPortrait] = useState(false);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
 
   const historyRef = useRef<Data[]>([]);
