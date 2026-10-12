@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { strokeCells, territoryPath } from './map-tools';
+import { expandTiles, strokeCells, territoryPath } from './map-tools';
 
 describe('map painting', () => {
   it('fills every cell during a fast stroke', () => {
@@ -20,5 +20,8 @@ describe('map painting', () => {
     expect(territoryPath(['0,0', '4,4'], true).match(/M/g)?.length).toBe(2);
     expect(territoryPath(['0,0'], false)).not.toContain('Q');
     expect(territoryPath([], true)).toBe('');
+  });
+  it('upgrades old large tiles to the finer grid', () => {
+    expect(expandTiles({ '1,2': 'a' }, 2)).toEqual({ '2,4': 'a', '3,4': 'a', '2,5': 'a', '3,5': 'a' });
   });
 });
