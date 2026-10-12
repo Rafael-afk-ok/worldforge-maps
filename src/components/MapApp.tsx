@@ -137,7 +137,7 @@ export default function MapApp() {
     if (historyIndexRef.current > 0) {
       historyIndexRef.current--;
       const prevState = historyRef.current[historyIndexRef.current];
-      setData(prevState);
+      if (prevState) setData(prevState);
       updateHistoryState();
     }
   };
@@ -146,7 +146,7 @@ export default function MapApp() {
     if (historyIndexRef.current < historyRef.current.length - 1) {
       historyIndexRef.current++;
       const nextState = historyRef.current[historyIndexRef.current];
-      setData(nextState);
+      if (nextState) setData(nextState);
       updateHistoryState();
     }
   };
