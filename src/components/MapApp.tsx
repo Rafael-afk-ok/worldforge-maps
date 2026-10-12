@@ -370,7 +370,7 @@ export default function MapApp() {
 
       <div ref={ref} aria-label={t.mapLabel} className="relative min-w-0 flex-1 touch-none select-none overflow-hidden bg-muted"
         style={{ cursor: tool === "mover" ? "grab" : "crosshair" }}
-        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={stopDrag} onPointerCancel={stopDrag} onLostPointerCapture={stopDrag}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={stopDrag} onPointerCancel={stopDrag} onLostPointerCapture={stopDrag} onPointerLeave={() => setCursorPos(null)}
         onDoubleClick={finishLine} onContextMenu={e => e.preventDefault()}>
         <svg className="absolute left-0 top-0 overflow-visible" width={W} height={H}
           style={{ transform: `translate(${view.x}px,${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
