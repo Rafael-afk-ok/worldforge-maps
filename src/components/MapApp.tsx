@@ -308,6 +308,15 @@ export default function MapApp() {
         drag.current = null; return;
       }
     }
+    if (mode === "view") {
+      drag.current = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
+      const c = cellAt(e.clientX, e.clientY);
+      const cellKey = c ? `${c[0]},${c[1]}` : null;
+      const nationId = cellKey ? data.tiles[cellKey] : undefined;
+      const nation = nationId ? nationById(nationId) : undefined;
+      setSel(nation ? { kind: "nation", id: nation.id } : null);
+      return;
+    }
     if (e.button === 1 || e.button === 2 || tool === "mover") {
       drag.current = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
       if (tool === "mover" && e.button === 0) {
@@ -357,6 +366,7 @@ export default function MapApp() {
     }
   };
   const finishLine = () => {
+    if (mode !== "edit") return;
     if (draft.length >= 2 && (tool === "estrada" || tool === "rota")) {
       const l: Line = { id: uid(), type: tool, points: draft };
       setData(d => ({ ...d, lines: [...d.lines, l] })); setSel({ kind: "line", id: l.id });
@@ -665,7 +675,7 @@ export default function MapApp() {
             <polyline key={l.id} points={l.points.map(p => p.join(",")).join(" ")} fill="none"
               className={l.type === "estrada" ? "stroke-foreground" : "stroke-chart-3"} strokeWidth={selLine?.id === l.id ? 5 : 3}
               strokeDasharray={l.type === "rota" ? "8 6" : undefined} strokeLinecap="round" strokeLinejoin="round"
-              onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); setSel({ kind: "line", id: l.id }); } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, lines: d.lines.filter(x => x.id !== l.id) })); } }} style={{ cursor: "pointer" }} />
+              onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); setSel({ kind: "line", id: l.id }); } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, lines: d.lines.filter(x => x.id !== l.id) })); } }} style={{ cursor: "pointer" }} />
           ))}
           {draft.length > 0 && <polyline points={draft.map(p => p.join(",")).join(" ")} fill="none" className="stroke-primary" strokeWidth={2} strokeDasharray="4 4" />}
           
@@ -744,7 +754,7 @@ export default function MapApp() {
         {notice && <div role="status" className="absolute bottom-12 left-3 right-3 flex items-center justify-between gap-2 rounded border border-border bg-card p-3 text-sm" onPointerDown={e => e.stopPropagation()}>{notice}<Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setNotice("")}><X /></Button></div>}
       </div>
 
-      {(selNation || selMarker || selLine || selComment) && (
+      {mode === "edit" && (selNation || selMarker || selLine || selComment) && (
         <aside className="map-details-panel shrink-0 overflow-y-auto border-l border-border bg-card p-4">
           <div className="mb-3 flex justify-end"><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setSel(null)} className="text-muted-foreground"><X /></Button></div>
           {selNation && <div className="grid gap-3">
