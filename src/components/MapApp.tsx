@@ -85,6 +85,8 @@ export default function MapApp() {
   const viewRef = useRef(view);
   viewRef.current = view;
   const drag = useRef<{ mode: "pan" | "paint"; sx: number; sy: number; vx: number; vy: number } | null>(null);
+  const touchPoints = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStart = useRef<{ distance: number; zoom: number; worldX: number; worldY: number } | null>(null);
 
   const updateHistoryState = () => {
     setCanUndo(historyIndexRef.current > 0);
@@ -238,6 +240,14 @@ export default function MapApp() {
 
   const onDown = (e: React.PointerEvent) => {
     e.currentTarget.setPointerCapture(e.pointerId);
+    if (deviceMode === "celular" && e.pointerType === "touch") {
+      touchPoints.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touchPoints.current.size >= 2) {
+        const pts = [...touchPoints.current.values()]; const a = pts[0], b = pts[1]; const bounds = ref.current?.getBoundingClientRect();
+        if (a && b) { const midX = (a.x + b.x) / 2 - (bounds?.left ?? 0), midY = (a.y + b.y) / 2 - (bounds?.top ?? 0); pinchStart.current = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), zoom: viewRef.current.z, worldX: (midX - viewRef.current.x) / viewRef.current.z, worldY: (midY - viewRef.current.y) / viewRef.current.z }; }
+        drag.current = null; return;
+      }
+    }
     if (e.button === 1 || e.button === 2 || tool === "mover") {
       drag.current = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
       if (tool === "mover" && e.button === 0) {
@@ -269,6 +279,11 @@ export default function MapApp() {
     }
   };
   const onMove = (e: React.PointerEvent) => {
+    if (deviceMode === "celular" && e.pointerType === "touch" && touchPoints.current.has(e.pointerId)) {
+      touchPoints.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pts = [...touchPoints.current.values()]; const a = pts[0], b = pts[1], initial = pinchStart.current; const bounds = ref.current?.getBoundingClientRect();
+      if (pts.length >= 2 && a && b && initial) { const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)); const z = Math.max(0.05, Math.min(4, initial.zoom * distance / initial.distance)); const midX = (a.x + b.x) / 2 - (bounds?.left ?? 0), midY = (a.y + b.y) / 2 - (bounds?.top ?? 0); setView({ z, x: midX - initial.worldX * z, y: midY - initial.worldY * z }); return; }
+    }
     const [wx, wy] = toWorld(e.clientX, e.clientY);
     setCursorPos({ x: (Math.floor(wx / CELL) + 0.5) * CELL, y: (Math.floor(wy / CELL) + 0.5) * CELL });
     const d = drag.current; if (!d) return;
@@ -353,7 +368,7 @@ export default function MapApp() {
   const worldBalance = worldStats.income - worldStats.expenses;
   const foodBalance = worldStats.foodProduction - worldStats.foodConsumption;
   const updateLog = [
-    { version: "Atualização atual", title: "Status do mundo e suporte mobile", detail: "Painel de indicadores, economia e alimentação agregadas, seleção de dispositivo e zoom com dois dedos." },
+    { version: "Atualização atual", title: "Status do mundo, suporte mobile e remoção de regiões", detail: "Painel de indicadores, economia e alimentação agregadas, seleção de dispositivo, zoom com dois dedos e remoção completa da mecânica de regiões." },
     { version: "Interface", title: "Textos e janelas internas", detail: "Comentários como textos no mapa, janelas próprias para edição, confirmação, exportação e restauração." },
     { version: "Mapa", title: "Formas de localidades e zoom distante", detail: "Cidades, capitais, portos e fortes com símbolos configuráveis e visualização em níveis baixos de zoom." },
     { version: "Gestão", title: "Relações entre nações", detail: "Suseranos e vassalos com validação contra relações circulares." },
@@ -423,7 +438,7 @@ export default function MapApp() {
 
       <div ref={ref} aria-label={t.mapLabel} className="relative min-w-0 flex-1 touch-none select-none overflow-hidden bg-muted"
         style={{ cursor: tool === "mover" ? "grab" : "crosshair" }}
-        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={stopDrag} onPointerCancel={stopDrag} onLostPointerCapture={stopDrag} onPointerLeave={() => setCursorPos(null)}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={e => { if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); if (touchPoints.current.size < 2) pinchStart.current = null; } stopDrag(); }} onPointerCancel={e => { if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); pinchStart.current = null; } stopDrag(); }} onLostPointerCapture={stopDrag} onPointerLeave={() => setCursorPos(null)}
         onDoubleClick={finishLine} onContextMenu={e => e.preventDefault()}>
         <svg className="absolute left-0 top-0 overflow-visible" width={W} height={H}
           style={{ transform: `translate(${view.x}px,${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
