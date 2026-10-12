@@ -19,8 +19,8 @@
  */
 
 @theme inline {
-  --font-display: "Cinzel", serif;
-  --font-sans: "EB Garamond", serif;
+  --font-display: "VT323", monospace;
+  --font-sans: "VT323", monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -65,23 +65,23 @@
 
 :root {
   --radius: 0.375rem;
-  --background: oklch(0.95 0.03 85);
-  --foreground: oklch(0.25 0.04 50);
-  --card: oklch(0.97 0.02 85);
+  --background: oklch(0.96 0.008 145);
+  --foreground: oklch(0.26 0.018 145);
+  --card: oklch(0.99 0.003 145);
   --card-foreground: oklch(0.129 0.042 264.695);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.45 0.12 35);
+  --primary: oklch(0.48 0.13 145);
   --primary-foreground: oklch(0.984 0.003 247.858);
   --secondary: oklch(0.968 0.007 247.896);
   --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.88 0.03 80);
+  --muted: oklch(0.9 0.012 145);
   --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.9 0.04 80);
+  --accent: oklch(0.9 0.04 145);
   --accent-foreground: oklch(0.208 0.042 265.755);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.8 0.04 75);
+  --border: oklch(0.8 0.018 145);
   --input: oklch(0.929 0.013 255.508);
   --ring: oklch(0.704 0.04 256.788);
   --chart-1: oklch(0.646 0.222 41.116);
@@ -100,19 +100,19 @@
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
+  --background: oklch(0.18 0.006 145);
   --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
+  --card: oklch(0.23 0.009 145);
   --card-foreground: oklch(0.984 0.003 247.858);
   --popover: oklch(0.208 0.042 265.755);
   --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
+  --primary: oklch(0.76 0.15 145);
   --primary-foreground: oklch(0.208 0.042 265.755);
   --secondary: oklch(0.279 0.041 260.031);
   --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
+  --muted: oklch(0.27 0.009 145);
   --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
+  --accent: oklch(0.31 0.025 145);
   --accent-foreground: oklch(0.984 0.003 247.858);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.984 0.003 247.858);
@@ -145,6 +145,26 @@
   }
 }
 
-.label{display:block;margin-bottom:.25rem;font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted-foreground)}
+.label{display:block;margin-bottom:.25rem;font-size:.9rem;text-transform:uppercase;letter-spacing:0;color:var(--muted-foreground)}
 .field{width:100%;border:1px solid var(--border);background:var(--background);border-radius:.25rem;padding:.25rem .5rem}
-.rel-propria{color:var(--primary)}.rel-aliada{color:oklch(0.5 0.14 150)}.rel-neutra{color:var(--muted-foreground)}.rel-inimiga{color:var(--destructive)}
+.rel-propria{color:var(--primary)}.rel-aliada{color:var(--primary)}.rel-neutra{color:var(--muted-foreground)}.rel-inimiga{color:var(--destructive)}
+
+body { font-family: var(--font-sans); font-size: 18px; }
+.atlas-app { height: 100dvh; }
+.atlas-app .text-xs { font-size: 1rem; line-height: 1.2; }
+.atlas-app .text-sm { font-size: 1.1rem; line-height: 1.2; }
+.atlas-app .field { font-size: 1.1rem; }
+.atlas-app button { letter-spacing: 0; }
+.atlas-app input[type=range] { accent-color: var(--primary); }
+.atlas-app input[type=file] { max-width: 100%; }
+.atlas-app input[type=file]::file-selector-button { font-family: inherit; background: var(--accent); color: var(--foreground); border: 1px solid var(--border); padding: 4px 8px; }
+.atlas-fullscreen { position: fixed; inset: 0; z-index: 50; }
+.map-toolbar { position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border); background: var(--card); border-radius: 4px; z-index: 10; }
+.map-tools-panel { width: 264px; }
+.map-details-panel { width: 300px; }
+@media (max-width: 900px) {
+  .map-tools-panel { position: absolute; top: 0; bottom: 0; left: 0; z-index: 20; width: min(264px, 80vw); box-shadow: 4px 0 20px color-mix(in oklab, var(--foreground) 15%, transparent); }
+  .map-details-panel { position: absolute; top: 0; bottom: 0; right: 0; z-index: 25; width: min(300px, 85vw); box-shadow: -4px 0 20px color-mix(in oklab, var(--foreground) 15%, transparent); }
+  .map-tools-panel.panel-closed { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
