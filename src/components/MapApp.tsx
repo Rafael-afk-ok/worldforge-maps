@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, ClipboardList, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil } from "lucide-react";
+import { Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, ClipboardList, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
-type Relation = "propria" | "aliada" | "neutra" | "inimiga";
-type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
+type Relation = "propria" | "amigavel" | "neutra" | "inimiga";
+type Nation = { id: string; name: string; color: string; relation: Relation; relations?: Record<string, Relation> | undefined; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
 type Alliance = { id: string; name: string; nationIds: string[]; color: string; image?: string | undefined };
 type War = { id: string; name: string; attackers: string[]; defenders: string[]; active: boolean; startedAt: string; endedAt?: string | undefined };
 type MapComment = { id: string; x: number; y: number; text: string; createdAt: string; size?: number; fontFamily?: string; color?: string | undefined; rotation?: number };
@@ -34,15 +34,15 @@ type Marker = {
 };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
-type Data = { cellSize?: number; nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; alliances?: Alliance[]; wars?: War[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
+type Data = { cellSize?: number; nations: Nation[]; playerNationId?: string | undefined; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; alliances?: Alliance[]; wars?: War[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
 type AppDialog = { type: "text"; title: string; value: string; onSubmit: (value: string) => void } | { type: "confirm"; title: string; message: string; onSubmit: () => void } | { type: "save"; name: string; description: string; filename: string } | { type: "history"; selectedId: string } | { type: "updates" } | { type: "status" } | { type: "compare" } | { type: "diplomacy" } | { type: "tutorial" };
 type Tool = "mover" | "pintar" | "balde" | "apagar" | "comentario" | MarkerType | LineType;
 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
 const KEY = "atlas-nacoes-v1";
 const uid = () => Math.random().toString(36).slice(2, 9);
-const empty: Data = { cellSize: MAP_CELL, nations: [], tiles: {}, markers: [], lines: [], comments: [], alliances: [], wars: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
-const RELS: Relation[] = ["propria", "aliada", "neutra", "inimiga"];
+const empty: Data = { cellSize: MAP_CELL, nations: [], playerNationId: undefined, tiles: {}, markers: [], lines: [], comments: [], alliances: [], wars: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
+const RELS: Relation[] = ["propria", "amigavel", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
 const SHAPES: { id: MarkerShape; label: string }[] = [{ id: "circle", label: "Círculo" }, { id: "square", label: "Quadrado" }, { id: "triangle", label: "Triângulo" }, { id: "star", label: "Estrela" }, { id: "diamond", label: "Losango" }, { id: "hexagon", label: "Hexágono" }, { id: "cross", label: "Cruz" }];
 const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "comentario", "capital", "cidade", "forte", "porto", "estrada", "rota"];
@@ -62,12 +62,10 @@ export default function MapApp() {
   const [homeTheme, setHomeTheme] = useState<HomeTheme>("atlas");
   const [pendingViewer, setPendingViewer] = useState(false);
   const [data, setData] = useState<Data>(empty);
-  const [dark, setDark] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [brushSize, setBrushSize] = useState(2);
-  const [filter, setFilter] = useState<"todas" | Relation | "alianças" | "guerras" | "inimigas">("todas");
-  const [diplomacyFocusFilter, setDiplomacyFocusFilter] = useState<"todas" | "aliados" | "inimigos" | "guerras" | "alianças">("todas");
+  const [filter, setFilter] = useState<"todas" | "propria" | "amigavel" | "neutra" | "inimigas" | "alianças" | "guerras">("todas");
   const [allianceName, setAllianceName] = useState("");
   const [allianceMembers, setAllianceMembers] = useState<string[]>([]);
   const [allianceColor, setAllianceColor] = useState("#64748b");
@@ -104,7 +102,7 @@ export default function MapApp() {
 
   const t = DICTS[lang];
   const tx = (pt: string, en: string, es = en) => lang === "pt" ? pt : lang === "es" ? es : en;
-  const REL: Record<Relation, string> = { propria: t.rel_propria, aliada: t.rel_aliada, neutra: t.rel_neutra, inimiga: t.rel_inimiga };
+  const REL: Record<Relation, string> = { propria: t.rel_propria, amigavel: tx("Amigável", "Friendly", "Amistosa"), neutra: t.rel_neutra, inimiga: t.rel_inimiga };
   const appRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const lastPaint = useRef<[number, number] | null>(null);
@@ -165,7 +163,6 @@ export default function MapApp() {
       const coarseSmallScreen = window.matchMedia("(pointer: coarse)").matches && window.matchMedia("(max-width: 900px)").matches;
       setIsMobileDevice(mobileUA || coarseSmallScreen);
       setDeviceMode(localStorage.getItem("worldforge-device-mode") === "celular" ? "celular" : localStorage.getItem("worldforge-device-mode") === "pc" ? "pc" : (mobileUA || coarseSmallScreen) ? "celular" : "pc");
-      setDark(localStorage.getItem("atlas-theme") === "dark");
       const savedHomeTheme = localStorage.getItem("worldforge-home-theme");
       if (savedHomeTheme && HOME_THEMES.some(theme => theme.id === savedHomeTheme)) setHomeTheme(savedHomeTheme as HomeTheme);
       const l = localStorage.getItem("atlas-lang");
@@ -179,10 +176,6 @@ export default function MapApp() {
   useEffect(() => { if (loaded) localStorage.setItem("worldforge-device-mode", deviceMode); }, [deviceMode, loaded]);
   useEffect(() => { if (loaded) localStorage.setItem("worldforge-home-theme", homeTheme); }, [homeTheme, loaded]);
   useEffect(() => { const check = () => setOrientationPortrait(window.innerHeight > window.innerWidth); check(); window.addEventListener("resize", check); window.addEventListener("orientationchange", check); return () => { window.removeEventListener("resize", check); window.removeEventListener("orientationchange", check); }; }, []);
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    if (loaded) localStorage.setItem("atlas-theme", dark ? "dark" : "light");
-  }, [dark, loaded]);
   useEffect(() => { document.documentElement.lang = lang === "pt" ? "pt-BR" : lang; if (loaded && !languageSetup) localStorage.setItem("atlas-lang", lang); }, [lang, loaded, languageSetup]);
   useEffect(() => {
     const changed = () => {
@@ -535,6 +528,7 @@ export default function MapApp() {
   const updateLog = [
     { version: "5a73ce9", title: tx("Visualização somente leitura e abas informativas", "Read-only viewer and information tabs", "Vista de solo lectura y pestañas informativas"), detail: tx("Separação das informações de nações, localidades, diplomacia, comparação e camadas; temas nas configurações e restauração do zoom pela roda do mouse.", "Separated nation, location, diplomacy, comparison and layer information; added themes to settings and restored mouse-wheel zoom.", "Se separó la información de naciones, localidades, diplomacia, comparación y capas; se añadieron temas a la configuración y se restauró el zoom con la rueda del ratón.") },
     { version: "d91f20a", title: tx("Status e filtros diplomáticos", "Status and diplomatic filters", "Estado y filtros diplomáticos"), detail: tx("Status do mundo centralizado na parte inferior em PC e celular; filtros de alianças, guerras, aliados e inimigos relativos à nação selecionada; tradução do botão de inserir imagem.", "World status centered at the bottom on PC and mobile; alliance, war, ally and enemy filters based on the selected nation; translated image upload control.", "Estado del mundo centrado abajo en PC y móvil; filtros de alianzas, guerras, aliados y enemigos según la nación seleccionada; botón para subir imágenes traducido.") },
+    { version: "e24c6a1", title: tx("Diplomacia bilateral e filtros corrigidos", "Bilateral diplomacy and fixed filters", "Diplomacia bilateral y filtros corregidos"), detail: tx("Relações amigável, neutra e inimiga são individuais em relação ao país de referência; alianças formais e guerras têm filtros próprios no menu principal. Removido o botão de modo claro/escuro, substituído pelos temas.", "Friendly, neutral and enemy relations are stored bilaterally against a reference nation; formal alliances and wars have separate main-menu filters. Removed the light/dark toggle in favor of themes.", "Las relaciones amistosa, neutral y enemiga se guardan bilateralmente respecto al país de referencia; alianzas formales y guerras tienen filtros separados en el menú principal. Se eliminó el interruptor claro/oscuro en favor de los temas.") },
     { version: "201d3b3", title: tx("Compatibilidade de tipos", "Type compatibility", "Compatibilidad de tipos"), detail: tx("Ajuste dos campos opcionais para compatibilidade com as verificações estritas de TypeScript.", "Adjusted optional fields to satisfy strict TypeScript checks.", "Se ajustaron los campos opcionales para cumplir las comprobaciones estrictas de TypeScript.") },
     { version: "7f8d9c8", title: tx("Importação de mapas mais segura", "Safer map imports", "Importación de mapas más segura"), detail: tx("Limites para tamanhos de células importadas, validação mais segura de marcadores e preservação de alianças, guerras e inimigos.", "Added limits for imported cell sizes, safer marker validation, and preservation of alliances, wars and enemies.", "Se añadieron límites al tamaño de celdas importadas, validación más segura de marcadores y conservación de alianzas, guerras y enemigos.") },
     { version: "658b24c", title: tx("Tela inicial e alternância de modos", "Home screen and mode switching", "Pantalla inicial y cambio de modos"), detail: tx("Adicionados botões para alternar entre edição e visualização, cinco temas persistentes para a tela inicial e ajustes no painel lateral.", "Added buttons to switch between editing and viewing, five persistent home-screen themes, and sidebar layout fixes.", "Se añadieron botones para cambiar entre edición y visualización, cinco temas persistentes para la pantalla inicial y ajustes del panel lateral.") },
@@ -553,21 +547,13 @@ export default function MapApp() {
   const alliances = data.alliances ?? [];
   const wars = data.wars ?? [];
   const focusedNation = sel?.kind === "nation" ? data.nations.find(n => n.id === sel.id) : undefined;
-  const focusAllianceIds = focusedNation ? alliances.filter(a => a.nationIds.includes(focusedNation.id)).flatMap(a => a.nationIds) : [];
-  const focusWarIds = focusedNation ? wars.filter(w => w.active && [...w.attackers, ...w.defenders].includes(focusedNation.id)).flatMap(w => [...w.attackers, ...w.defenders]) : [];
-  const focusEnemyIds = focusedNation ? [...(focusedNation.enemyIds ?? []), ...data.nations.filter(n => n.enemyIds?.includes(focusedNation.id)).map(n => n.id), ...focusWarIds.filter(id => id !== focusedNation.id)] : [];
+  const relationToPlayer = (nation: Nation): Relation => nation.id === data.playerNationId ? "propria" : nation.relations?.[data.playerNationId ?? ""] ?? nation.relation;
   const visibleNations = data.nations.filter(n => {
-    if (focusedNation && diplomacyFocusFilter !== "todas") {
-      if (diplomacyFocusFilter === "alianças") return focusAllianceIds.includes(n.id);
-      if (diplomacyFocusFilter === "guerras") return focusWarIds.includes(n.id);
-      if (diplomacyFocusFilter === "aliados") return n.id === focusedNation.id || focusAllianceIds.includes(n.id) || n.relation === "aliada";
-      if (diplomacyFocusFilter === "inimigos") return focusEnemyIds.includes(n.id);
-    }
     if (filter === "todas") return true;
     if (filter === "alianças") return alliances.some(a => a.nationIds.includes(n.id));
     if (filter === "guerras") return wars.some(w => w.active && [...w.attackers, ...w.defenders].includes(n.id));
-    if (filter === "inimigas") return (n.enemyIds?.length ?? 0) > 0 || wars.some(w => w.active && [...w.attackers, ...w.defenders].includes(n.id));
-    return n.relation === filter;
+    if (filter === "inimigas") return relationToPlayer(n) === "inimiga" || (n.enemyIds ?? []).includes(data.playerNationId ?? "") || data.nations.some(other => other.id === data.playerNationId && (other.enemyIds ?? []).includes(n.id));
+    return relationToPlayer(n) === filter;
   });
   const territories = useMemo(() => data.nations.map(n => {
     const keys = Object.entries(data.tiles).filter(([, id]) => id === n.id).map(([key]) => key);
@@ -690,7 +676,7 @@ export default function MapApp() {
         </section></details>
         <details open className="rounded-md border border-border p-2"><summary className="cursor-pointer select-none font-semibold">{t.nations}</summary><section className="mt-3">
           <div className="mb-1 flex items-center justify-between"><h2 className="label !mb-0">{t.nations}</h2><Button variant="ghost" size="sm" onClick={addNation} className="text-sm text-primary hover:underline">{t.newNation}</Button></div>
-          <label htmlFor="relation-filter" className="label">{t.filter}</label><select id="relation-filter" aria-label={t.filter} className="field mb-2" value={filter} onChange={e => { setFilter(e.target.value as typeof filter); setSel(null); }}><option value="todas">{t.allNations}</option>{RELS.map(r => <option key={r} value={r}>{REL[r]}</option>)}<option value="alianças">{tx("Alianças (unificadas)", "Alliances (unified)", "Alianzas (unificadas)")}</option><option value="guerras">{tx("Guerras ativas", "Active wars", "Guerras activas")}</option><option value="inimigas">{tx("Inimigos", "Enemies", "Enemigos")}</option></select>
+          <label htmlFor="player-nation" className="label">{tx("Meu país / referência diplomática", "My nation / diplomatic reference", "Mi país / referencia diplomática")}</label><select id="player-nation" className="field mb-2" value={data.playerNationId ?? ""} onChange={e => { setData(d => ({ ...d, playerNationId: e.target.value || undefined })); setFilter("todas"); }}><option value="">{tx("Selecionar país de referência", "Select reference nation", "Seleccionar país de referencia")}</option>{data.nations.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}</select><label htmlFor="relation-filter" className="label">{t.filter}</label><select id="relation-filter" aria-label={t.filter} className="field mb-2" value={filter} onChange={e => setFilter(e.target.value as typeof filter)}><option value="todas">{tx("Universal — todas as nações", "All — all nations", "Universal — todas las naciones")}</option><option value="propria">{tx("Meu país", "My nation", "Mi país")}</option><option value="amigavel">{tx("Amigáveis", "Friendly", "Amistosas")}</option><option value="neutra">{tx("Neutras", "Neutral", "Neutrales")}</option><option value="inimigas">{tx("Inimigas", "Enemies", "Enemigas")}</option><option value="alianças">{tx("Alianças formais", "Formal alliances", "Alianzas formales")}</option><option value="guerras">{tx("Guerras ativas", "Active wars", "Guerras activas")}</option></select>
           {visibleNations.length === 0 && <p className="text-xs text-muted-foreground">{t.noNations}</p>}
           <div className="grid gap-1">
             {visibleNations.map(n => (
@@ -805,7 +791,6 @@ export default function MapApp() {
           <Button variant="ghost" size="icon" disabled={!canRedo} aria-label={t.redo} title={t.redo} onClick={handleRedo}><Redo className="h-4 w-4" /></Button>
           <Button variant="ghost" size="icon" aria-label={t.zoomOut} title={t.zoomOut} onClick={() => zoom(0.8)}><Minus /></Button>
           <Button variant="ghost" size="icon" aria-label={t.zoomIn} title={t.zoomIn} onClick={() => zoom(1.25)}><Plus /></Button>
-          <Button variant="ghost" size="icon" aria-label={dark ? t.light : t.dark} title={dark ? t.light : t.dark} onClick={() => setDark(v => !v)}>{dark ? <Sun /> : <Moon />}</Button>
           <Button variant="ghost" size="icon" aria-label={fullscreen ? t.exitFullscreen : t.fullscreen} title={fullscreen ? t.exitFullscreen : t.fullscreen} onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize /> : <Maximize />}</Button>
           <Button variant="ghost" size="icon" aria-label={tx("Status do mundo", "World status", "Estado del mundo")} title={tx("Status do mundo", "World status", "Estado del mundo")} onClick={() => setDialog({ type: "status" })}><BarChart3 /></Button>
           <Button variant="ghost" size="icon" aria-label={tx("Comparar países e cidades", "Compare nations and cities", "Comparar países y ciudades")} title={tx("Comparar países e cidades", "Compare nations and cities", "Comparar países y ciudades")} onClick={() => setDialog({ type: "compare" })}><GitCompareArrows /></Button>
@@ -816,7 +801,7 @@ export default function MapApp() {
         </div>
         <div className="pointer-events-none absolute bottom-3 left-3 rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground">{Math.round(view.z * 100)}% · {t[tool]}</div>
         <div className="absolute bottom-3 left-1/2 z-10 grid w-max max-w-[calc(100%-7rem)] -translate-x-1/2 grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-border bg-card/95 p-2 text-xs shadow-sm sm:grid-cols-4 sm:max-w-[calc(100%-10rem)] sm:p-3"><span>{tx("População", "Population", "Población")} <b>{worldStats.population.toLocaleString("pt-BR")}</b></span><span>{tx("Saldo", "Balance", "Balance")} <b className={worldBalance >= 0 ? "text-emerald-600" : "text-destructive"}>{worldBalance.toLocaleString("pt-BR")}</b></span><span>{tx("Comida", "Food", "Alimentos")} <b className={foodBalance >= 0 ? "text-emerald-600" : "text-destructive"}>{foodBalance.toLocaleString("pt-BR")}</b></span><span>{tx("Localidades", "Locations", "Localidades")} <b>{data.markers.length}</b></span></div>
-        {focusedNation && <div className="absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap justify-center gap-1 rounded-lg border border-border bg-card/95 p-2 shadow-sm" aria-label={tx("Filtros diplomáticos da nação selecionada","Diplomatic filters for selected nation","Filtros diplomáticos de la nación seleccionada")}><span className="w-full truncate text-center text-xs font-semibold">{tx("Diplomacia de","Diplomacy of","Diplomacia de")} {focusedNation.name}</span>{([{id:"todas",label:tx("Todos","All","Todos")},{id:"alianças",label:tx("Alianças","Alliances","Alianzas")},{id:"guerras",label:tx("Guerras","Wars","Guerras")},{id:"aliados",label:tx("Aliados","Allies","Aliados")},{id:"inimigos",label:tx("Inimigos","Enemies","Enemigos")}] as const).map(item=><Button key={item.id} size="sm" variant={diplomacyFocusFilter===item.id?"default":"outline"} className="h-7 px-2 text-xs" onClick={()=>setDiplomacyFocusFilter(item.id)}>{item.label}</Button>)}</div>}
+
         {settingsOpen && <div role="dialog" aria-label={t.settings} className={`absolute right-3 top-16 z-30 w-64 rounded p-4 shadow-lg ${activeHomeTheme.panel}`} onPointerDown={e => e.stopPropagation()}><div className="mb-2 flex items-center justify-between"><h2 className="font-display text-xl">{t.settings}</h2><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setSettingsOpen(false)}><X /></Button></div><label htmlFor="app-theme" className="label">{tx("Tema da interface", "Interface theme", "Tema de la interfaz")}</label><select id="app-theme" className="field mb-3" value={homeTheme} onChange={e => setHomeTheme(e.target.value as HomeTheme)}>{HOME_THEMES.map(theme => <option key={theme.id} value={theme.id}>{theme.id === "atlas" ? "Atlas" : theme.id === "midnight" ? tx("Noturno", "Midnight", "Nocturno") : theme.id === "parchment" ? tx("Pergaminho", "Parchment", "Pergamino") : theme.id === "ocean" ? tx("Oceano", "Ocean", "Océano") : tx("Floresta", "Forest", "Bosque")}</option>)}</select><label htmlFor="device-mode" className="label">{tx("Dispositivo", "Device", "Dispositivo")}</label><select id="device-mode" className="field mb-3" value={deviceMode} onChange={e => setDeviceMode(e.target.value as "pc" | "celular")}><option value="pc">{tx("Computador / PC", "Computer / PC", "Ordenador / PC")}</option><option value="celular">{tx("Celular", "Mobile phone", "Móvil")}</option></select>{deviceMode === "celular" && <p className="mb-3 text-xs text-muted-foreground">{tx("No celular: use dois dedos para aproximar/afastar. O editor exige orientação paisagem.", "On mobile, use two fingers to zoom. The editor requires landscape orientation.", "En el móvil, usa dos dedos para acercar o alejar. El editor requiere orientación horizontal.")}</p>}<label htmlFor="lang" className="label">{t.language}</label><select id="lang" className="field" value={lang} onChange={e => setLang(e.target.value as Lang)}>{LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></div>}
         {notice && <div role="status" className="absolute bottom-12 left-3 right-3 flex items-center justify-between gap-2 rounded border border-border bg-card p-3 text-sm" onPointerDown={e => e.stopPropagation()}>{notice}<Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setNotice("")}><X /></Button></div>}
       </div>
@@ -834,8 +819,7 @@ export default function MapApp() {
               <label className="inline-flex cursor-pointer items-center gap-2 rounded border border-border bg-accent px-3 py-1 text-sm"><Upload className="h-4 w-4" />{t.uploadFlag}<input aria-label={t.uploadFlag} type="file" accept="image/*" hidden onChange={e => { onImage(e.target.files?.[0], flag => upNation(selNation.id, { flag }), 400); e.target.value = ""; }} /></label>
               <div className="mt-2 flex gap-1"><input aria-label={t.flagUrl} placeholder={t.flagUrl} value={flagUrl} onChange={e => setFlagUrl(e.target.value)} className="field" /><Button size="sm" variant="outline" disabled={!/^https:\/\//.test(flagUrl.trim())} onClick={() => { upNation(selNation.id, { flag: flagUrl.trim() }); setFlagUrl(""); }}>OK</Button></div>
             </div></details><details className="rounded-lg border border-border p-3"><summary className="cursor-pointer select-none font-semibold">{tx("Relações e governo", "Relations and government", "Relaciones y gobierno")}</summary><div className="mt-3 grid gap-3"><div><label className="label">{t.relation}</label>
-              <div className="grid grid-cols-2 gap-1">{RELS.map(r => (
-                <Button variant="outline" size="sm" key={r} onClick={() => setDialog({ type: "confirm", title: tx("Confirmar mudança diplomática", "Confirm diplomatic change", "Confirmar cambio diplomático"), message: tx(`Alterar a relação de ${selNation.name} para “${REL[r]}”?`, `Change the relation for ${selNation.name} to “${REL[r]}”?`, `¿Cambiar la relación de ${selNation.name} a “${REL[r]}”?`), onSubmit: () => { upNation(selNation.id, { relation: r }); setDialog(null); } })} className={`rounded border px-2 py-1 text-xs rel-${r} ${selNation.relation === r ? "border-current font-bold" : "border-border"}`}>{REL[r]}</Button>))}</div></div>
+              <p className="mb-2 text-xs text-muted-foreground">{data.playerNationId ? tx("Estas opções alteram apenas a relação bilateral com o país escolhido no menu principal.", "These options change only the bilateral relation with the nation selected in the main menu.", "Estas opciones solo cambian la relación bilateral con el país elegido en el menú principal.") : tx("Selecione primeiro seu país de referência no menu principal.", "First select your reference nation in the main menu.", "Primero selecciona tu país de referencia en el menú principal.")}</p><div className="grid grid-cols-2 gap-1">{RELS.filter(r => r !== "propria").map(r => (<Button variant="outline" size="sm" key={r} disabled={!data.playerNationId || selNation.id === data.playerNationId} onClick={() => setDialog({ type: "confirm", title: tx("Confirmar mudança diplomática", "Confirm diplomatic change", "Confirmar cambio diplomático"), message: tx(`Definir a relação de ${selNation.name} com ${nationById(data.playerNationId ?? "")?.name ?? "seu país"} como “${REL[r]}”?`, `Set ${selNation.name}'s relation to ${nationById(data.playerNationId ?? "")?.name ?? "your nation"} to “${REL[r]}”?`, `¿Establecer la relación de ${selNation.name} con ${nationById(data.playerNationId ?? "")?.name ?? "tu país"} como “${REL[r]}”?`), onSubmit: () => { setData(d => ({ ...d, nations: d.nations.map(n => n.id === selNation.id ? { ...n, relations: { ...(n.relations ?? {}), [d.playerNationId!]: r } } : n) })); setDialog(null); } })} className={`rounded border px-2 py-1 text-xs rel-${r} ${(selNation.id === data.playerNationId ? "propria" : relationToPlayer(selNation)) === r ? "border-current font-bold" : "border-border"}`}>{REL[r]}</Button>))}</div></div>
             <div><label className="label">{t.ruler}</label><input value={selNation.ruler} onChange={e => upNation(selNation.id, { ruler: e.target.value })} className="field" /></div>
             <div><label className="label">{tx("Suserano / nação superior", "Overlord / superior nation", "Señor / nación superior")}</label><select className="field" value={selNation.overlordId ?? ""} onChange={e => upNation(selNation.id, { overlordId: e.target.value || undefined })}><option value="">{tx("Nenhum (independente)", "None (independent)", "Ninguno (independiente)")}</option>{data.nations.filter(n => n.id !== selNation.id).map(n => <option key={n.id} value={n.id}>{n.name}</option>)}</select><p className="mt-1 text-xs text-muted-foreground">{tx("Vassalos:", "Vassals:", "Vasallos:")} {data.nations.filter(n => n.overlordId === selNation.id).map(n => n.name).join(", ") || "nenhum"}</p></div>
             <div><label className="label">{t.treaties}</label><textarea rows={4} value={selNation.treaties} onChange={e => upNation(selNation.id, { treaties: e.target.value })} className="field" /></div>
@@ -979,8 +963,10 @@ function readMap(input: unknown): Data {
   const oldCell = typeof d["cellSize"] === "number" && Number.isFinite(d["cellSize"]) ? Math.max(CELL, Math.min(40, d["cellSize"])) : 20;
   const factor = Math.max(1, Math.min(20, Math.round(oldCell / CELL)));
   const nations: Nation[] = d["nations"].map((n: Nation) => {
-    if (!n || typeof n.id !== "string" || !n.id || typeof n.name !== "string" || !RELS.includes(n.relation)) throw new Error("Invalid nation");
-    return { id: n.id, name: n.name, color: typeof n.color === "string" && (/^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color)) ? n.color : "#888888", relation: n.relation, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: flagImage(n.flag), overlordId: typeof n.overlordId === "string" && n.overlordId !== n.id ? n.overlordId : undefined, enemyIds: Array.isArray(n.enemyIds) ? n.enemyIds.filter((id): id is string => typeof id === "string" && id !== n.id) : [] };
+    const relation = (n as Nation).relation === ("aliada" as Relation) ? "amigavel" : (n as Nation).relation;
+    if (!n || typeof n.id !== "string" || !n.id || typeof n.name !== "string" || !RELS.includes(relation)) throw new Error("Invalid nation");
+    const relations = n.relations && typeof n.relations === "object" ? Object.fromEntries(Object.entries(n.relations).filter(([id, value]) => typeof id === "string" && RELS.includes(value as Relation)).map(([id, value]) => [id, value as Relation])) : undefined;
+    return { id: n.id, name: n.name, color: typeof n.color === "string" && (/^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color)) ? n.color : "#888888", relation, relations, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: flagImage(n.flag), overlordId: typeof n.overlordId === "string" && n.overlordId !== n.id ? n.overlordId : undefined, enemyIds: Array.isArray(n.enemyIds) ? n.enemyIds.filter((id): id is string => typeof id === "string" && id !== n.id) : [] };
   });
   if (new Set(nations.map(n => n.id)).size !== nations.length) throw new Error("Duplicate nation");
   const ids = new Set(nations.map(n => n.id));
@@ -1027,7 +1013,7 @@ function readMap(input: unknown): Data {
   const alliances: Alliance[] = Array.isArray(d["alliances"]) ? (d["alliances"] as Alliance[]).filter(a => a && typeof a.id === "string" && typeof a.name === "string").map(a => ({ id: a.id, name: a.name, nationIds: Array.isArray(a.nationIds) ? a.nationIds.filter(id => typeof id === "string" && validNationIds.has(id)) : [], color: typeof a.color === "string" && /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : "#64748b", image: flagImage(a.image) })) : [];
   const wars: War[] = Array.isArray(d["wars"]) ? (d["wars"] as War[]).filter(w => w && typeof w.id === "string" && typeof w.name === "string").map(w => ({ id: w.id, name: w.name, attackers: Array.isArray(w.attackers) ? w.attackers.filter(id => typeof id === "string" && validNationIds.has(id)) : [], defenders: Array.isArray(w.defenders) ? w.defenders.filter(id => typeof id === "string" && validNationIds.has(id)) : [], active: typeof w.active === "boolean" ? w.active : false, startedAt: typeof w.startedAt === "string" ? w.startedAt : new Date().toISOString(), endedAt: typeof w.endedAt === "string" ? w.endedAt : undefined })) : [];
   for (const nation of nations) { let cursor = nation.overlordId; const seen = new Set([nation.id]); while (cursor) { if (seen.has(cursor)) { nation.overlordId = undefined; break; } seen.add(cursor); cursor = nations.find(n => n.id === cursor)?.overlordId; } }
-  return { ...empty, cellSize: CELL, nations, tiles, markers, lines, comments, alliances, wars, bg: image(d["bg"]) ?? null,
+  return { ...empty, cellSize: CELL, nations, playerNationId: typeof d["playerNationId"] === "string" && nations.some(n => n.id === d["playerNationId"]) ? d["playerNationId"] : undefined, tiles, markers, lines, comments, alliances, wars, bg: image(d["bg"]) ?? null,
     bgOpacity: finite(d["bgOpacity"], 0.6, 0, 1), bgFit: d["bgFit"] === "cover" || d["bgFit"] === "stretch" ? d["bgFit"] : "contain",
     bgScale: finite(d["bgScale"], 1, 0.2, 3), bgX: finite(d["bgX"], 0, -W, W), bgY: finite(d["bgY"], 0, -H, H), bgRotation: finite(d["bgRotation"], 0, -180, 180),
     smooth: typeof d["smooth"] === "boolean" ? d["smooth"] : true, showGrid: typeof d["showGrid"] === "boolean" ? d["showGrid"] : true };
