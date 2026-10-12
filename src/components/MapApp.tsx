@@ -348,8 +348,8 @@ export default function MapApp() {
   const upNation = (id: string, p: Partial<Nation>) => {
     const current = data.nations.find(n => n.id === id); if (!current) return;
     const overlord = Object.prototype.hasOwnProperty.call(p, "overlordId") ? p.overlordId : current.overlordId;
-    if (overlord === id) { setNotice("Uma nação não pode ser vassala de si mesma."); return; }
-    if (overlord) { let cursor: string | undefined = overlord; const seen = new Set<string>([id]); while (cursor) { if (seen.has(cursor)) { setNotice("Essa relação criaria um ciclo de vassalagem."); return; } seen.add(cursor); cursor = data.nations.find(n => n.id === cursor)?.overlordId; } }
+    if (overlord === id) { setNotice(tx("Uma nação não pode ser vassala de si mesma.", "A nation cannot be its own vassal.", "Una nación no puede ser vasalla de sí misma.")); return; }
+    if (overlord) { let cursor: string | undefined = overlord; const seen = new Set<string>([id]); while (cursor) { if (seen.has(cursor)) { setNotice(tx("Essa relação criaria um ciclo de vassalagem.", "This relationship would create a vassalage cycle.", "Esta relación crearía un ciclo de vasallaje.")); return; } seen.add(cursor); cursor = data.nations.find(n => n.id === cursor)?.overlordId; } }
     setData(d => ({ ...d, nations: d.nations.map(n => n.id === id ? { ...n, ...p, overlordId: overlord || undefined } : n) }));
   };
   const upMarker = (id: string, p: Partial<Marker>) => setData(d => ({ ...d, markers: d.markers.map(n => n.id === id ? { ...n, ...p } : n) }));
@@ -387,7 +387,7 @@ export default function MapApp() {
     const sx = mapWidth / W, sy = mapHeight / H, ox = margin, oy = header;
     ctx.fillStyle = "#f8fafc"; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#0f172a"; ctx.font = "bold 34px Arial"; ctx.fillText(mapName || "Meu mundo", margin, 50);
-    ctx.fillStyle = "#475569"; ctx.font = "16px Arial"; ctx.fillText(mapDescription.trim() || "Mapa político", margin, 80);
+    ctx.fillStyle = "#475569"; ctx.font = "16px Arial"; ctx.fillText(mapDescription.trim() || tx("Mapa político", "Political map", "Mapa político"), margin, 80);
     ctx.textAlign = "right"; ctx.fillText(new Date().toLocaleDateString("pt-BR"), canvas.width - margin, 50); ctx.textAlign = "left";
     ctx.fillStyle = "#e2e8f0"; ctx.fillRect(ox, oy, mapWidth, mapHeight);
     const drawLayers = () => {
@@ -431,17 +431,17 @@ export default function MapApp() {
       }
       ctx.strokeStyle = "#64748b"; ctx.lineWidth = 2; ctx.strokeRect(ox, oy, mapWidth, mapHeight);
       const fy = oy + mapHeight + 36;
-      ctx.textAlign = "left"; ctx.fillStyle = "#0f172a"; ctx.font = "bold 18px Arial"; ctx.fillText("LEGENDA", margin, fy);
+      ctx.textAlign = "left"; ctx.fillStyle = "#0f172a"; ctx.font = "bold 18px Arial"; ctx.fillText(tx("LEGENDA", "LEGEND", "LEYENDA"), margin, fy);
       data.nations.slice(0, 12).forEach((nation, i) => {
         const col = i % 4, row = Math.floor(i / 4), lx = margin + col * (mapWidth / 4), ly = fy + 28 + row * 27;
         ctx.fillStyle = nation.color.startsWith("hsl") ? toHex(nation.color) : nation.color; ctx.fillRect(lx, ly - 13, 18, 18);
         ctx.fillStyle = "#0f172a"; ctx.font = "14px Arial"; ctx.fillText(nation.name.slice(0, 28), lx + 26, ly + 1);
       });
-      if (data.nations.length > 12) { ctx.fillStyle = "#475569"; ctx.font = "13px Arial"; ctx.fillText(`+ ${data.nations.length - 12} nações adicionais`, margin, fy + 28 + 3 * 27); }
+      if (data.nations.length > 12) { ctx.fillStyle = "#475569"; ctx.font = "13px Arial"; ctx.fillText(`+ ${data.nations.length - 12} ${tx("nações adicionais", "additional nations", "naciones adicionales")}`, margin, fy + 28 + 3 * 27); }
       const scaleY = oy + mapHeight - 24, scaleX = ox + mapWidth - 210;
       ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(scaleX, scaleY); ctx.lineTo(scaleX + 150, scaleY); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(scaleX, scaleY - 7); ctx.lineTo(scaleX, scaleY + 7); ctx.moveTo(scaleX + 150, scaleY - 7); ctx.lineTo(scaleX + 150, scaleY + 7); ctx.stroke();
-      ctx.fillStyle = "#0f172a"; ctx.font = "13px Arial"; ctx.textAlign = "center"; ctx.fillText("Escala gráfica · 150 unidades", scaleX + 75, scaleY - 12);
+      ctx.fillStyle = "#0f172a"; ctx.font = "13px Arial"; ctx.textAlign = "center"; ctx.fillText(tx("Escala gráfica · 150 unidades", "Graphic scale · 150 units", "Escala gráfica · 150 unidades"), scaleX + 75, scaleY - 12);
       canvas.toBlob(blob => {
         if (!blob) { setNotice(tx("Falha ao gerar o PNG.", "Failed to generate PNG.", "No se pudo generar el PNG.")); return; }
         const url = URL.createObjectURL(blob), a = document.createElement("a");
@@ -470,7 +470,7 @@ export default function MapApp() {
     const payload = { format: "worldforge-map", version: 3, metadata: { name: snapshot.name, description: snapshot.description, updatedAt: now }, map: data, versions: nextVersions };
     const safe = (requestedFile.trim() || snapshot.name).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "meu-mundo";
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })); const a = document.createElement("a"); a.href = url; a.download = `${safe}.json`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setNotice(lang === "pt" ? "Mapa e histórico exportados em JSON." : "Map and history exported as JSON.");
+    setNotice(tx("Mapa e histórico exportados em JSON.", "Map and history exported as JSON.", "Mapa e historial exportados en JSON."));
   };
   const restoreVersion = (version: MapVersion) => setDialog({ type: "confirm", title: tx("Restaurar versão", "Restore version", "Restaurar versión"), message: tx(`Restaurar "${version.name}"?`, `Restore "${version.name}"?`, `¿Restaurar "${version.name}"?`), onSubmit: () => { setData(readMap(version.data)); setMapName(version.name); setMapDescription(version.description); setNotice(tx("Versão restaurada.", "Version restored.", "Versión restaurada.")); } });
   const importJson = async (f?: File) => {
@@ -712,11 +712,12 @@ export default function MapApp() {
             <input value={selMarker.name} onChange={e => upMarker(selMarker.id, { name: e.target.value })} className="field font-display text-xl" />
             <select value={selMarker.type} onChange={e => upMarker(selMarker.id, { type: e.target.value as MarkerType })} className="field">
               {(Object.keys(ICON) as MarkerType[]).map(k => <option key={k} value={k}>{t[`m_${k}`]}</option>)}</select>
-            <div><label className="label">{tx("Forma do símbolo", "Symbol shape", "Forma del símbolo")}</label><select value={selMarker.shape ?? (selMarker.type === "capital" ? "star" : selMarker.type === "forte" ? "square" : selMarker.type === "porto" ? "diamond" : "circle")} onChange={e => upMarker(selMarker.id, { shape: e.target.value as MarkerShape })} className="field">{SHAPES.map(shape => <option key={shape.id} value={shape.id}>{shape.label}</option>)}</select></div>
+            <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer select-none font-semibold">{tx("Aparência", "Appearance", "Apariencia")}</summary><div className="mt-3 grid gap-3"><div><label className="label">{tx("Forma do símbolo", "Symbol shape", "Forma del símbolo")}</label><select value={selMarker.shape ?? (selMarker.type === "capital" ? "star" : selMarker.type === "forte" ? "square" : selMarker.type === "porto" ? "diamond" : "circle")} onChange={e => upMarker(selMarker.id, { shape: e.target.value as MarkerShape })} className="field">{SHAPES.map(shape => <option key={shape.id} value={shape.id}>{tx(shape.label, ({circle:"Circle",square:"Square",triangle:"Triangle",star:"Star",diamond:"Diamond",hexagon:"Hexagon",cross:"Cross"} as Record<MarkerShape,string>)[shape.id], ({circle:"Círculo",square:"Cuadrado",triangle:"Triángulo",star:"Estrella",diamond:"Rombo",hexagon:"Hexágono",cross:"Cruz"} as Record<MarkerShape,string>)[shape.id])}</option>)}</select></div>
             <div className="grid grid-cols-2 gap-2"><label className="label">{tx("Cor do símbolo", "Symbol color", "Color del símbolo")}<input aria-label={tx("Cor do símbolo", "Symbol color", "Color del símbolo")} type="color" value={toHex(selMarker.color ?? "#ffffff")} onChange={e => upMarker(selMarker.id, { color: e.target.value })} className="field mt-1 h-10 p-1" /></label><label className="label">{tx("Tamanho do símbolo", "Symbol size", "Tamaño del símbolo")} · {Math.round((selMarker.size ?? 1) * 100)}%<input aria-label={tx("Tamanho do símbolo", "Symbol size", "Tamaño del símbolo")} type="range" min={0.5} max={3} step={0.1} value={selMarker.size ?? 1} onChange={e => upMarker(selMarker.id, { size: +e.target.value })} className="mt-3 w-full" /></label></div>
-            <div className="grid grid-cols-2 gap-2"><label className="label">{tx("Rotação", "Rotation", "Rotación")} · {selMarker.rotation ?? 0}°<input aria-label={tx("Rotação do símbolo", "Symbol rotation", "Rotación del símbolo")} type="range" min={0} max={359} value={selMarker.rotation ?? 0} onChange={e => upMarker(selMarker.id, { rotation: +e.target.value })} className="mt-3 w-full" /></label><label className="label">{tx("Tamanho do nome", "Label size", "Tamaño de la etiqueta")}<input aria-label={tx("Tamanho do nome", "Label size", "Tamaño de la etiqueta")} type="number" min={6} max={40} value={selMarker.labelSize ?? (selMarker.type === "capital" ? 12 : 10)} onChange={e => upMarker(selMarker.id, { labelSize: Math.max(6, Math.min(40, +e.target.value || 6)) })} className="field mt-1" /></label></div>
+            <div className="grid grid-cols-2 gap-2"><label className="label">{tx("Rotação", "Rotation", "Rotación")} · {selMarker.rotation ?? 0}°<input aria-label={tx("Rotação do símbolo", "Symbol rotation", "Rotación del símbolo")} type="range" min={0} max={359} value={selMarker.rotation ?? 0} onChange={e => upMarker(selMarker.id, { rotation: +e.target.value })} className="mt-3 w-full" /></label><label className="label">{tx("Tamanho do nome", "Label size", "Tamaño de la etiqueta")}<input aria-label={tx("Tamanho do nome", "Label size", "Tamaño de la etiqueta")} type="number" min={6} max={40} value={selMarker.labelSize ?? (selMarker.type === "capital" ? 12 : 10)} onChange={e => upMarker(selMarker.id, { labelSize: Math.max(6, Math.min(40, +e.target.value || 6)) })} className="field mt-1" /></label></div></div></details>
             <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer select-none font-semibold">{tx("Posição", "Position", "Posición")} <span className="text-xs font-normal text-muted-foreground">— {tx("modificações da posição", "position adjustments", "ajustes de posición")}</span></summary><div className="mt-3 grid gap-2"><div className="grid grid-cols-2 gap-2"><label className="label">{tx("Posição X", "X position", "Posición X")}<input aria-label={tx("Posição X", "X position", "Posición X")} type="number" value={Math.round(selMarker.x)} onChange={e => upMarker(selMarker.id, { x: +e.target.value || 0 })} className="field mt-1" /></label><label className="label">{tx("Posição Y", "Y position", "Posición Y")}<input aria-label={tx("Posição Y", "Y position", "Posición Y")} type="number" value={Math.round(selMarker.y)} onChange={e => upMarker(selMarker.id, { y: +e.target.value || 0 })} className="field mt-1" /></label></div><p className="text-xs text-muted-foreground">{tx("Arraste a localidade no mapa para reposicioná-la.", "Drag the location on the map to reposition it.", "Arrastra la localidad en el mapa para cambiar su posición.")}</p></div></details>
 
+            <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer select-none font-semibold">{t.photo}</summary><div className="mt-3 grid gap-2">
             {/* Foto do local */}
             <div>
               <label className="label">{t.photo}</label>
@@ -736,7 +737,8 @@ export default function MapApp() {
               </div>
             </div>
 
-            {/* População e Economia em Esmeraldas */}
+            </div></details><details className="rounded-lg border border-border p-3"><summary className="cursor-pointer select-none font-semibold">{tx("População e economia", "Population and economy", "Población y economía")}</summary><div className="mt-3 grid gap-3">
+            {/* População e economia */}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="label flex items-center gap-1"><Users className="h-3 w-3" /> {t.npcs}</label>
@@ -763,11 +765,11 @@ export default function MapApp() {
 
             <div>
               <label className="label">{t.production}</label>
-              <input placeholder="Ex: Trigo, Minério de Ferro, Madeira..." value={selMarker.production ?? ""} onChange={e => upMarker(selMarker.id, { production: e.target.value })} className="field" />
+              <input placeholder={tx("Ex.: Trigo, Minério de Ferro, Madeira...", "E.g. Wheat, Iron Ore, Wood...", "Ej.: Trigo, mineral de hierro, madera...")} value={selMarker.production ?? ""} onChange={e => upMarker(selMarker.id, { production: e.target.value })} className="field" />
             </div>
 
             <div className="grid grid-cols-2 gap-2"><div><label className="label flex items-center gap-1"><Wheat className="h-3 w-3" />{t.production} de comida</label><input type="number" min={0} value={selMarker.foodProduction ?? 0} onChange={e => upMarker(selMarker.id, { foodProduction: Math.max(0, +e.target.value) })} className="field" /></div><div><label className="label">{t.expenses} de comida</label><input type="number" min={0} value={selMarker.foodConsumption ?? 0} onChange={e => upMarker(selMarker.id, { foodConsumption: Math.max(0, +e.target.value) })} className="field" /></div></div>
-            <div><label className="label">{t.notes}</label><textarea rows={4} value={selMarker.notes} onChange={e => upMarker(selMarker.id, { notes: e.target.value })} className="field" /></div>
+            </div></details><details className="rounded-lg border border-border p-3"><summary className="cursor-pointer select-none font-semibold">{t.notes}</summary><div className="mt-3"><textarea rows={4} value={selMarker.notes} onChange={e => upMarker(selMarker.id, { notes: e.target.value })} className="field" /></div></details>
             <Button variant="ghost" onClick={() => { setData(d => ({ ...d, markers: d.markers.filter(m => m.id !== selMarker.id) })); setSel(null); }} className="text-sm text-destructive">{t.delete}</Button>
           </div>}
 
