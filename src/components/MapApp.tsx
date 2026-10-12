@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2 } from "lucide-react";
-import { strokeCells, territoryPath } from "@/lib/map-tools";
+import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings } from "lucide-react";
+import { strokeCells, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
+import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
 type Relation = "propria" | "aliada" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined };
@@ -10,26 +11,16 @@ type MarkerType = "capital" | "cidade" | "forte" | "porto";
 type Marker = { id: string; type: MarkerType; x: number; y: number; name: string; notes: string };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
-type Data = { nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
+type Data = { cellSize?: number; nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
 type Tool = "mover" | "pintar" | "apagar" | MarkerType | LineType;
 
-const COLS = 120, ROWS = 80, CELL = 20, W = COLS * CELL, H = ROWS * CELL;
+const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
 const KEY = "atlas-nacoes-v1";
 const uid = () => Math.random().toString(36).slice(2, 9);
-const empty: Data = { nations: [], tiles: {}, markers: [], lines: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
-const REL: Record<Relation, string> = { propria: "Minha nação", aliada: "Aliada", neutra: "Neutra", inimiga: "Inimiga" };
+const empty: Data = { cellSize: MAP_CELL, nations: [], tiles: {}, markers: [], lines: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
+const RELS: Relation[] = ["propria", "aliada", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
-const TOOLS: { id: Tool; label: string }[] = [
-  { id: "mover", label: "✋ Mover / Selecionar" },
-  { id: "pintar", label: "🖌 Pintar território" },
-  { id: "apagar", label: "🧽 Apagar" },
-  { id: "capital", label: "★ Capital" },
-  { id: "cidade", label: "● Cidade" },
-  { id: "forte", label: "▲ Forte" },
-  { id: "porto", label: "⚓ Porto" },
-  { id: "estrada", label: "━ Estrada" },
-  { id: "rota", label: "┅ Rota marítima" },
-];
+const TOOLS: Tool[] = ["mover", "pintar", "apagar", "capital", "cidade", "forte", "porto", "estrada", "rota"];
 
 type Sel = { kind: "nation"; id: string } | { kind: "marker"; id: string } | { kind: "line"; id: string } | null;
 
@@ -41,6 +32,11 @@ export default function MapApp() {
   const [brushSize, setBrushSize] = useState(2);
   const [filter, setFilter] = useState<"todas" | Relation>("todas");
   const [notice, setNotice] = useState("");
+  const [lang, setLang] = useState<Lang>("pt");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [flagUrl, setFlagUrl] = useState("");
+  const t = DICTS[lang];
+  const REL: Record<Relation, string> = { propria: t.rel_propria, aliada: t.rel_aliada, neutra: t.rel_neutra, inimiga: t.rel_inimiga };
   const appRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const lastPaint = useRef<[number, number] | null>(null);
@@ -56,13 +52,14 @@ export default function MapApp() {
   const drag = useRef<{ mode: "pan" | "paint"; sx: number; sy: number; vx: number; vy: number } | null>(null);
 
   useEffect(() => {
-    try { const s = localStorage.getItem(KEY); if (s) setData(readMap(JSON.parse(s))); setDark(localStorage.getItem("atlas-theme") === "dark"); } catch {}
+    try { const s = localStorage.getItem(KEY); if (s) setData(readMap(JSON.parse(s))); setDark(localStorage.getItem("atlas-theme") === "dark"); const l = localStorage.getItem("atlas-lang"); if (l === "pt" || l === "en" || l === "es") setLang(l); } catch {}
     setLoaded(true);
   }, []);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     if (loaded) localStorage.setItem("atlas-theme", dark ? "dark" : "light");
   }, [dark, loaded]);
+  useEffect(() => { document.documentElement.lang = lang === "pt" ? "pt-BR" : lang; if (loaded) localStorage.setItem("atlas-lang", lang); }, [lang, loaded]);
   useEffect(() => {
     const changed = () => { if (!document.fullscreenElement) { setFullscreen(false); screen.orientation?.unlock?.(); } };
     const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") { setFullscreen(false); screen.orientation?.unlock?.(); } };
@@ -70,7 +67,7 @@ export default function MapApp() {
     document.addEventListener("keydown", keydown);
     return () => { document.removeEventListener("fullscreenchange", changed); document.removeEventListener("keydown", keydown); };
   }, []);
-  useEffect(() => { if (loaded) try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { alert("Armazenamento cheio (imagem de fundo muito grande?)"); } }, [data, loaded]);
+  useEffect(() => { if (loaded) try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { setNotice(t.storageFull); } }, [data, loaded]);
 
   useEffect(() => {
     const el = ref.current; if (!el) return;
@@ -129,8 +126,8 @@ export default function MapApp() {
       await appRef.current?.requestFullscreen?.();
       const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
       if (orientation?.lock) await orientation.lock("landscape");
-      else setNotice("Gire o celular para usar o mapa em paisagem.");
-    } catch { setNotice("Gire o celular para paisagem; a tela cheia depende do navegador."); }
+      else setNotice(t.rotate);
+    } catch { setNotice(t.rotateFallback); }
   };
 
   const onDown = (e: React.PointerEvent) => {
@@ -146,10 +143,10 @@ export default function MapApp() {
     }
     const [wx, wy] = toWorld(e.clientX, e.clientY);
     if (tool === "pintar" || tool === "apagar") {
-      if (tool === "pintar" && !brush) { alert("Crie/selecione uma nação para pintar."); return; }
+      if (tool === "pintar" && !brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
       drag.current = { mode: "paint", sx: 0, sy: 0, vx: 0, vy: 0 }; paint(e.clientX, e.clientY);
     } else if (tool === "capital" || tool === "cidade" || tool === "forte" || tool === "porto") {
-      const m: Marker = { id: uid(), type: tool, x: wx, y: wy, name: `Nova ${tool}`, notes: "" };
+      const m: Marker = { id: uid(), type: tool, x: wx, y: wy, name: t.newMarker, notes: "" };
       setData(d => ({ ...d, markers: [...d.markers, m] })); setSel({ kind: "marker", id: m.id });
     } else {
       setDraft(p => [...p, [wx, wy]]);
@@ -169,29 +166,29 @@ export default function MapApp() {
   };
 
   const addNation = () => {
-    const n: Nation = { id: uid(), name: "Nova nação", color: `hsl(${Math.floor(Math.random() * 360)} 55% 50%)`, relation: data.nations.length ? "neutra" : "propria", ruler: "", treaties: "", notes: "" };
+    const n: Nation = { id: uid(), name: t.newNationName, color: `hsl(${Math.floor(Math.random() * 360)} 55% 50%)`, relation: data.nations.length ? "neutra" : "propria", ruler: "", treaties: "", notes: "" };
     setData(d => ({ ...d, nations: [...d.nations, n] })); setBrush(n.id); setSel({ kind: "nation", id: n.id }); setTool("pintar");
   };
   const upNation = (id: string, p: Partial<Nation>) => setData(d => ({ ...d, nations: d.nations.map(n => n.id === id ? { ...n, ...p } : n) }));
   const upMarker = (id: string, p: Partial<Marker>) => setData(d => ({ ...d, markers: d.markers.map(n => n.id === id ? { ...n, ...p } : n) }));
   const nationById = (id: string) => data.nations.find(n => n.id === id);
 
-  const onImage = (f: File | undefined, apply: (value: string) => void) => {
+  const onImage = (f: File | undefined, apply: (value: string) => void, maxSize = 1600) => {
     if (!f) return;
-    if (!f.type.startsWith("image/")) { setNotice("Escolha uma imagem válida."); return; }
+    if (!f.type.startsWith("image/")) { setNotice(t.invalidImage); return; }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== "string") return;
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
         canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
         const ctx = canvas.getContext("2d"); if (!ctx) return;
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         apply(canvas.toDataURL("image/webp", 0.85));
       };
-      img.onerror = () => setNotice("Não foi possível abrir esta imagem.");
+      img.onerror = () => setNotice(t.imageFail);
       img.src = reader.result;
     };
     reader.readAsDataURL(f);
@@ -203,16 +200,16 @@ export default function MapApp() {
     const a = document.createElement("a"); a.href = url;
     a.download = `meu-mundo-${new Date().toISOString().slice(0, 10)}.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setNotice("Cópia do mundo exportada com bandeiras e imagens.");
+    setNotice(t.exported);
   };
   const importJson = async (f?: File) => {
     if (!f) return;
     try {
       const next = readMap(JSON.parse(await f.text()));
-      if (!confirm("Importar este mundo substituirá o mapa atual. Deseja continuar?")) return;
+      if (!confirm(t.confirmImport)) return;
       setData(next); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap();
-      setNotice("Mundo importado com sucesso.");
-    } catch { setNotice("Arquivo inválido. Escolha uma cópia JSON exportada pelo Atlas."); }
+      setNotice(t.imported);
+    } catch { setNotice(t.invalidFile); }
   };
 
   const selNation = sel?.kind === "nation" ? nationById(sel.id) : undefined;
@@ -230,28 +227,29 @@ export default function MapApp() {
     <div ref={appRef} className={`atlas-app relative flex w-full overflow-hidden bg-background text-foreground ${fullscreen ? "atlas-fullscreen" : ""}`}>
       <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
       <aside className={`map-tools-panel flex shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-card p-4 ${panelOpen ? "" : "panel-closed"}`}>
-        <div className="flex items-center justify-between gap-2"><h1 className="font-display text-2xl text-primary">Atlas das Nações</h1><Button size="icon" variant="ghost" className="min-[901px]:hidden" aria-label="Fechar ferramentas" onClick={() => setPanelOpen(false)}><X /></Button></div>
+        <div className="flex items-center justify-between gap-2"><h1 className="font-display text-2xl leading-none text-primary">{t.appName}</h1><Button size="icon" variant="ghost" className="min-[901px]:hidden" aria-label={t.close} onClick={() => setPanelOpen(false)}><X /></Button></div>
         <section>
-          <h2 className="label">Ferramentas</h2>
+          <h2 className="label">{t.tools}</h2>
           <div className="grid gap-1">
-            {TOOLS.map(t => (
-              <Button variant="ghost" key={t.id} onClick={() => { setTool(t.id); setDraft([]); }}
-                className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === t.id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{t.label}</Button>
+            {TOOLS.map(id => (
+              <Button variant="ghost" key={id} onClick={() => { setTool(id); setDraft([]); if (id === "pintar" && !brush) { const first = visibleNations[0] ?? data.nations[0]; if (first) setBrush(first.id); else setNotice(t.createFirst); } }}
+                className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{t[id]}</Button>
             ))}
           </div>
-          {(tool === "pintar" || tool === "apagar") && <div className="mt-3"><label htmlFor="brush-size" className="label">Tamanho do pincel · {brushSize}</label><input id="brush-size" type="range" min={1} max={6} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
-          <div className="mt-3 grid gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.smooth} onChange={e => setData(d => ({ ...d, smooth: e.target.checked }))} />Bordas suaves</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.showGrid} onChange={e => setData(d => ({ ...d, showGrid: e.target.checked }))} />Grade</label></div>
-          {(tool === "estrada" || tool === "rota") && <Button variant="outline" size="sm" className="mt-2 w-full" disabled={draft.length < 2} onClick={finishLine}>Concluir traçado</Button>}
+          {(tool === "pintar" || tool === "apagar") && <div className="mt-3"><label htmlFor="brush-size" className="label">{t.brushSize} · {brushSize}</label><input id="brush-size" type="range" min={1} max={10} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
+          <div className="mt-3 grid gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.smooth} onChange={e => setData(d => ({ ...d, smooth: e.target.checked }))} />{t.smooth}</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.showGrid} onChange={e => setData(d => ({ ...d, showGrid: e.target.checked }))} />{t.grid}</label></div>
+          {(tool === "estrada" || tool === "rota") && <Button variant="outline" size="sm" className="mt-2 w-full" disabled={draft.length < 2} onClick={finishLine}>{t.finishLine}</Button>}
+          {tool === "pintar" && (brush && nationById(brush) ? <p className="mt-2 text-sm">{t.paintingWith}: <span style={{ color: nationById(brush)?.color }}>■</span> {nationById(brush)?.name}</p> : <div className="mt-2 grid gap-1"><p className="text-sm text-destructive">{data.nations.length ? t.pickNation : t.createFirst}</p>{!data.nations.length && <Button size="sm" onClick={addNation}>{t.createNation}</Button>}</div>)}
         </section>
         <section>
-          <div className="mb-1 flex items-center justify-between"><h2 className="label !mb-0">Nações</h2><Button variant="ghost" size="sm" onClick={addNation} className="text-sm text-primary hover:underline">+ Nova</Button></div>
-          <label htmlFor="relation-filter" className="label">Filtrar relações</label><select id="relation-filter" aria-label="Filtrar relações" className="field mb-2" value={filter} onChange={e => { setFilter(e.target.value as typeof filter); setSel(null); }}><option value="todas">Todas as nações</option>{(Object.keys(REL) as Relation[]).map(r => <option key={r} value={r}>{REL[r]}</option>)}</select>
-          {visibleNations.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma nação.</p>}
+          <div className="mb-1 flex items-center justify-between"><h2 className="label !mb-0">{t.nations}</h2><Button variant="ghost" size="sm" onClick={addNation} className="text-sm text-primary hover:underline">{t.newNation}</Button></div>
+          <label htmlFor="relation-filter" className="label">{t.filter}</label><select id="relation-filter" aria-label={t.filter} className="field mb-2" value={filter} onChange={e => { setFilter(e.target.value as typeof filter); setSel(null); }}><option value="todas">{t.allNations}</option>{RELS.map(r => <option key={r} value={r}>{REL[r]}</option>)}</select>
+          {visibleNations.length === 0 && <p className="text-xs text-muted-foreground">{t.noNations}</p>}
           <div className="grid gap-1">
             {visibleNations.map(n => (
               <Button variant="ghost" key={n.id} onClick={() => { setBrush(n.id); setSel({ kind: "nation", id: n.id }); }}
                 className={`h-auto min-h-9 flex-wrap items-center gap-2 rounded px-2 py-1 text-left text-sm ${brush === n.id ? "ring-1 ring-primary" : ""} hover:bg-accent`}>
-                {n.flag && <img src={n.flag} alt={`Bandeira de ${n.name}`} className="h-4 w-6 object-contain" />}<span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: n.color }} />
+                {n.flag && <img src={n.flag} alt={`${t.flag} ${n.name}`} className="h-4 w-6 object-contain" />}<span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: n.color }} />
                 <span className="flex-1 truncate">{n.name}</span>
                 <span className={`rel-${n.relation} text-xs uppercase`}>{REL[n.relation]}</span>
               </Button>
@@ -259,24 +257,24 @@ export default function MapApp() {
           </div>
         </section>
         <section>
-          <h2 className="label">Mapa de fundo</h2>
-          <input type="file" aria-label="Imagem do mapa" accept="image/*" onChange={e => onBg(e.target.files?.[0])} className="w-full text-xs" />
+          <h2 className="label">{t.bgMap}</h2>
+          <input type="file" aria-label={t.bgImage} accept="image/*" onChange={e => onBg(e.target.files?.[0])} className="w-full text-xs" />
           {data.bg && <>
-            <label className="mt-2 block text-xs">Opacidade</label>
+            <label className="mt-2 block text-xs">{t.opacity}</label>
             <input type="range" min={0} max={1} step={0.05} value={data.bgOpacity} onChange={e => setData(d => ({ ...d, bgOpacity: +e.target.value }))} className="w-full" />
-            <label htmlFor="bg-fit" className="label mt-2">Encaixe</label><select id="bg-fit" className="field" value={data.bgFit} onChange={e => setData(d => ({ ...d, bgFit: e.target.value as Data["bgFit"] }))}><option value="contain">Imagem inteira</option><option value="cover">Preencher mapa</option><option value="stretch">Esticar</option></select>
-            {([{ key: "bgScale", label: "Escala", min: 0.2, max: 3, step: 0.05 }, { key: "bgX", label: "Posição horizontal", min: -W, max: W, step: 20 }, { key: "bgY", label: "Posição vertical", min: -H, max: H, step: 20 }, { key: "bgRotation", label: "Rotação", min: -180, max: 180, step: 1 }] as const).map(c => <div key={c.key}><label htmlFor={c.key} className="label mt-2">{c.label} · {data[c.key]}</label><input id={c.key} className="w-full" type="range" min={c.min} max={c.max} step={c.step} value={data[c.key]} onChange={e => setData(d => ({ ...d, [c.key]: +e.target.value }))} /></div>)}
-            <div className="mt-2 flex gap-1"><Button variant="outline" size="sm" onClick={() => setData(d => ({ ...d, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, bgOpacity: 0.6 }))}><RotateCcw />Restaurar</Button><Button variant="ghost" size="icon" aria-label="Remover fundo" title="Remover fundo" className="text-destructive" onClick={() => setData(d => ({ ...d, bg: null }))}><Trash2 /></Button></div>
+            <label htmlFor="bg-fit" className="label mt-2">{t.fit}</label><select id="bg-fit" className="field" value={data.bgFit} onChange={e => setData(d => ({ ...d, bgFit: e.target.value as Data["bgFit"] }))}><option value="contain">{t.fitContain}</option><option value="cover">{t.fitCover}</option><option value="stretch">{t.fitStretch}</option></select>
+            {([{ key: "bgScale", label: t.scale, min: 0.2, max: 3, step: 0.05 }, { key: "bgX", label: t.posX, min: -W, max: W, step: 20 }, { key: "bgY", label: t.posY, min: -H, max: H, step: 20 }, { key: "bgRotation", label: t.rotation, min: -180, max: 180, step: 1 }] as const).map(c => <div key={c.key}><label htmlFor={c.key} className="label mt-2">{c.label} · {data[c.key]}</label><input id={c.key} className="w-full" type="range" min={c.min} max={c.max} step={c.step} value={data[c.key]} onChange={e => setData(d => ({ ...d, [c.key]: +e.target.value }))} /></div>)}
+            <div className="mt-2 flex gap-1"><Button variant="outline" size="sm" onClick={() => setData(d => ({ ...d, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, bgOpacity: 0.6 }))}><RotateCcw />{t.reset}</Button><Button variant="ghost" size="icon" aria-label={t.removeBg} title={t.removeBg} className="text-destructive" onClick={() => setData(d => ({ ...d, bg: null }))}><Trash2 /></Button></div>
           </>}
         </section>
         <section className="mt-auto grid gap-1 text-sm">
-          <Button variant="outline" onClick={exportJson} className="rounded border border-border px-2 py-1 hover:bg-accent"><Download />Exportar mundo</Button>
-          <Button variant="outline" onClick={() => importRef.current?.click()}><Upload />Importar mundo</Button>
-          <Button variant="ghost" onClick={() => { if (confirm("Apagar tudo?")) { setData(empty); setSel(null); setBrush(null); setDraft([]); } }} className="text-xs text-destructive">Limpar mapa</Button>
+          <Button variant="outline" onClick={exportJson} className="rounded border border-border px-2 py-1 hover:bg-accent"><Download />{t.exportWorld}</Button>
+          <Button variant="outline" onClick={() => importRef.current?.click()}><Upload />{t.importWorld}</Button>
+          <Button variant="ghost" onClick={() => { if (confirm(t.confirmClear)) { setData(empty); setSel(null); setBrush(null); setDraft([]); } }} className="text-xs text-destructive">{t.clearMap}</Button>
         </section>
       </aside>
 
-      <div ref={ref} aria-label="Mapa de nações" className="relative min-w-0 flex-1 touch-none select-none overflow-hidden bg-muted"
+      <div ref={ref} aria-label={t.mapLabel} className="relative min-w-0 flex-1 touch-none select-none overflow-hidden bg-muted"
         style={{ cursor: tool === "mover" ? "grab" : "crosshair" }}
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={stopDrag} onPointerCancel={stopDrag} onLostPointerCapture={stopDrag}
         onDoubleClick={finishLine} onContextMenu={e => e.preventDefault()}>
@@ -309,46 +307,50 @@ export default function MapApp() {
             return <g key={n.id} pointerEvents="none">{n.flag && <image href={n.flag} x={x - 36} y={y - 65} width={72} height={44} preserveAspectRatio="xMidYMid meet" />}<text x={x} y={y} textAnchor="middle" fontSize={30} className="fill-foreground font-display uppercase" opacity={0.9} paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{n.name}</text></g>; })}
         </svg>
         <div className="map-toolbar" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
-          <Button variant="ghost" size="icon" className="min-[901px]:hidden" aria-label="Abrir ferramentas" title="Ferramentas" onClick={() => setPanelOpen(v => !v)}><Menu /></Button>
-          <Button variant="ghost" size="icon" aria-label="Diminuir zoom" title="Diminuir zoom" onClick={() => zoom(0.8)}><Minus /></Button>
-          <Button variant="ghost" size="icon" aria-label="Aumentar zoom" title="Aumentar zoom" onClick={() => zoom(1.25)}><Plus /></Button>
-          <Button variant="ghost" size="icon" aria-label="Encaixar mapa" title="Encaixar mapa" onClick={fitMap}><Scan /></Button>
-          <Button variant="ghost" size="icon" aria-label={dark ? "Modo claro" : "Modo escuro"} title={dark ? "Modo claro" : "Modo escuro"} onClick={() => setDark(v => !v)}>{dark ? <Sun /> : <Moon />}</Button>
-          <Button variant="ghost" size="icon" aria-label={fullscreen ? "Sair da tela cheia" : "Tela cheia paisagem"} title={fullscreen ? "Sair da tela cheia" : "Tela cheia paisagem"} onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize /> : <Maximize />}</Button>
+          <Button variant="ghost" size="icon" className="min-[901px]:hidden" aria-label={t.tools} title={t.tools} onClick={() => setPanelOpen(v => !v)}><Menu /></Button>
+          <Button variant="ghost" size="icon" aria-label={t.zoomOut} title={t.zoomOut} onClick={() => zoom(0.8)}><Minus /></Button>
+          <Button variant="ghost" size="icon" aria-label={t.zoomIn} title={t.zoomIn} onClick={() => zoom(1.25)}><Plus /></Button>
+          <Button variant="ghost" size="icon" aria-label={t.fitMap} title={t.fitMap} onClick={fitMap}><Scan /></Button>
+          <Button variant="ghost" size="icon" aria-label={dark ? t.light : t.dark} title={dark ? t.light : t.dark} onClick={() => setDark(v => !v)}>{dark ? <Sun /> : <Moon />}</Button>
+          <Button variant="ghost" size="icon" aria-label={fullscreen ? t.exitFullscreen : t.fullscreen} title={fullscreen ? t.exitFullscreen : t.fullscreen} onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize /> : <Maximize />}</Button>
+          <Button variant="ghost" size="icon" aria-label={t.settings} title={t.settings} onClick={() => setSettingsOpen(v => !v)}><Settings /></Button>
         </div>
-        <div className="pointer-events-none absolute bottom-3 left-3 rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground">{Math.round(view.z * 100)}% · {TOOLS.find(t => t.id === tool)?.label}</div>
-        {notice && <div role="status" className="absolute bottom-12 left-3 right-3 flex items-center justify-between gap-2 rounded border border-border bg-card p-3 text-sm" onPointerDown={e => e.stopPropagation()}>{notice}<Button variant="ghost" size="icon" aria-label="Fechar aviso" onClick={() => setNotice("")}><X /></Button></div>}
+        <div className="pointer-events-none absolute bottom-3 left-3 rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground">{Math.round(view.z * 100)}% · {t[tool]}</div>
+        {settingsOpen && <div role="dialog" aria-label={t.settings} className="absolute right-3 top-16 z-30 w-64 rounded border border-border bg-card p-4 shadow-lg" onPointerDown={e => e.stopPropagation()}><div className="mb-2 flex items-center justify-between"><h2 className="font-display text-xl">{t.settings}</h2><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setSettingsOpen(false)}><X /></Button></div><label htmlFor="lang" className="label">{t.language}</label><select id="lang" className="field" value={lang} onChange={e => setLang(e.target.value as Lang)}>{LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></div>}
+        {notice && <div role="status" className="absolute bottom-12 left-3 right-3 flex items-center justify-between gap-2 rounded border border-border bg-card p-3 text-sm" onPointerDown={e => e.stopPropagation()}>{notice}<Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setNotice("")}><X /></Button></div>}
       </div>
 
       {(selNation || selMarker || selLine) && (
         <aside className="map-details-panel shrink-0 overflow-y-auto border-l border-border bg-card p-4">
-          <div className="mb-3 flex justify-end"><Button variant="ghost" size="icon" aria-label="Fechar detalhes" onClick={() => setSel(null)} className="text-muted-foreground"><X /></Button></div>
+          <div className="mb-3 flex justify-end"><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setSel(null)} className="text-muted-foreground"><X /></Button></div>
           {selNation && <div className="grid gap-3">
-            <input aria-label="Nome da nação" value={selNation.name} onChange={e => upNation(selNation.id, { name: e.target.value })} className="field font-display text-xl" />
-            <div className="flex items-center gap-2"><label className="label !mb-0">Cor</label>
+            <input aria-label={t.nationName} value={selNation.name} onChange={e => upNation(selNation.id, { name: e.target.value })} className="field font-display text-xl" />
+            <div className="flex items-center gap-2"><label className="label !mb-0">{t.color}</label>
               <input type="color" value={toHex(selNation.color)} onChange={e => upNation(selNation.id, { color: e.target.value })} />
-              <span className="text-xs text-muted-foreground">{tileCount(selNation.id)} territórios</span></div>
-            <div><label className="label">Bandeira</label>{selNation.flag && <div className="mb-2 flex items-center gap-3"><img src={selNation.flag} alt={`Bandeira de ${selNation.name}`} className="h-16 w-24 object-contain" /><Button variant="ghost" size="icon" aria-label="Remover bandeira" onClick={() => upNation(selNation.id, { flag: undefined })}><Trash2 /></Button></div>}<input aria-label="Bandeira da nação" type="file" accept="image/*" className="w-full text-xs" onChange={e => onImage(e.target.files?.[0], flag => upNation(selNation.id, { flag }))} /></div>
-            <div><label className="label">Relação</label>
-              <div className="grid grid-cols-2 gap-1">{(Object.keys(REL) as Relation[]).map(r => (
+              <span className="text-xs text-muted-foreground">{tileCount(selNation.id)} {t.territories}</span></div>
+            <div><label className="label">{t.flag}</label>{selNation.flag && <div className="mb-2 flex items-center gap-3"><img src={selNation.flag} alt={`${t.flag} ${selNation.name}`} className="h-16 w-24 border border-border object-contain" /><Button variant="ghost" size="icon" aria-label={t.removeFlag} onClick={() => upNation(selNation.id, { flag: undefined })}><Trash2 /></Button></div>}
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded border border-border bg-accent px-3 py-1 text-sm"><Upload className="h-4 w-4" />{t.uploadFlag}<input aria-label={t.uploadFlag} type="file" accept="image/*" hidden onChange={e => { onImage(e.target.files?.[0], flag => upNation(selNation.id, { flag }), 400); e.target.value = ""; }} /></label>
+              <div className="mt-2 flex gap-1"><input aria-label={t.flagUrl} placeholder={t.flagUrl} value={flagUrl} onChange={e => setFlagUrl(e.target.value)} className="field" /><Button size="sm" variant="outline" disabled={!/^https:\/\//.test(flagUrl.trim())} onClick={() => { upNation(selNation.id, { flag: flagUrl.trim() }); setFlagUrl(""); }}>OK</Button></div></div>
+            <div><label className="label">{t.relation}</label>
+              <div className="grid grid-cols-2 gap-1">{RELS.map(r => (
                 <Button variant="outline" size="sm" key={r} onClick={() => upNation(selNation.id, { relation: r })} className={`rounded border px-2 py-1 text-xs rel-${r} ${selNation.relation === r ? "border-current font-bold" : "border-border"}`}>{REL[r]}</Button>))}</div></div>
-            <div><label className="label">Governante</label><input value={selNation.ruler} onChange={e => upNation(selNation.id, { ruler: e.target.value })} className="field" /></div>
-            <div><label className="label">Tratados</label><textarea rows={4} value={selNation.treaties} onChange={e => upNation(selNation.id, { treaties: e.target.value })} className="field" /></div>
+            <div><label className="label">{t.ruler}</label><input value={selNation.ruler} onChange={e => upNation(selNation.id, { ruler: e.target.value })} className="field" /></div>
+            <div><label className="label">{t.treaties}</label><textarea rows={4} value={selNation.treaties} onChange={e => upNation(selNation.id, { treaties: e.target.value })} className="field" /></div>
             <div><label className="label">Observações</label><textarea rows={6} value={selNation.notes} onChange={e => upNation(selNation.id, { notes: e.target.value })} className="field" /></div>
-            <Button onClick={() => { setBrush(selNation.id); setTool("pintar"); setSel(null); setPanelOpen(false); }} className="h-auto whitespace-normal rounded bg-primary px-2 py-2 text-sm text-primary-foreground">Pintar território desta nação</Button>
-            <Button variant="ghost" onClick={() => { if (!confirm("Excluir nação?")) return; setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)) })); setSel(null); }} className="text-sm text-destructive">Excluir nação</Button>
+            <Button onClick={() => { setBrush(selNation.id); setTool("pintar"); setSel(null); setPanelOpen(false); }} className="h-auto whitespace-normal rounded bg-primary px-2 py-2 text-sm text-primary-foreground">{t.paintThis}</Button>
+            <Button variant="ghost" onClick={() => { if (!confirm(t.confirmDeleteNation)) return; setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)) })); setSel(null); }} className="text-sm text-destructive">{t.deleteNation}</Button>
           </div>}
           {selMarker && <div className="grid gap-3">
-            <span className="label">{ICON[selMarker.type]} {selMarker.type}</span>
+            <span className="label">{ICON[selMarker.type]} {t[`m_${selMarker.type}`]}</span>
             <input value={selMarker.name} onChange={e => upMarker(selMarker.id, { name: e.target.value })} className="field font-display text-xl" />
             <select value={selMarker.type} onChange={e => upMarker(selMarker.id, { type: e.target.value as MarkerType })} className="field">
-              {(Object.keys(ICON) as MarkerType[]).map(t => <option key={t} value={t}>{t}</option>)}</select>
+              {(Object.keys(ICON) as MarkerType[]).map(k => <option key={k} value={k}>{t[`m_${k}`]}</option>)}</select>
             <div><label className="label">Observações</label><textarea rows={6} value={selMarker.notes} onChange={e => upMarker(selMarker.id, { notes: e.target.value })} className="field" /></div>
-            <Button variant="ghost" onClick={() => { setData(d => ({ ...d, markers: d.markers.filter(m => m.id !== selMarker.id) })); setSel(null); }} className="text-sm text-destructive">Excluir</Button>
+            <Button variant="ghost" onClick={() => { setData(d => ({ ...d, markers: d.markers.filter(m => m.id !== selMarker.id) })); setSel(null); }} className="text-sm text-destructive">{t.delete}</Button>
           </div>}
           {selLine && <div className="grid gap-3">
-            <span className="label">{selLine.type === "estrada" ? "Estrada" : "Rota marítima"} · {selLine.points.length} pontos</span>
-            <Button variant="ghost" onClick={() => { setData(d => ({ ...d, lines: d.lines.filter(m => m.id !== selLine.id) })); setSel(null); }} className="text-sm text-destructive">Excluir traçado</Button>
+            <span className="label">{t[`l_${selLine.type}`]} · {selLine.points.length} {t.points}</span>
+            <Button variant="ghost" onClick={() => { setData(d => ({ ...d, lines: d.lines.filter(m => m.id !== selLine.id) })); setSel(null); }} className="text-sm text-destructive">{t.deleteLine}</Button>
           </div>}
         </aside>
       )}
@@ -371,14 +373,17 @@ function readMap(input: unknown): Data {
   const text = (value: unknown) => typeof value === "string" ? value : "";
   const finite = (value: unknown, fallback: number, min: number, max: number) => typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
   const image = (value: unknown) => typeof value === "string" && /^data:image\/(png|jpeg|webp|gif|avif);base64,/.test(value) ? value : undefined;
+  const flagImage = (value: unknown) => image(value) ?? (typeof value === "string" && /^https:\/\/\S+$/.test(value) ? value : undefined);
+  const oldCell = typeof d["cellSize"] === "number" ? d["cellSize"] : 20;
+  const factor = Math.max(1, Math.round(oldCell / CELL));
   const nations: Nation[] = d["nations"].map((n: Nation) => {
     if (!n || typeof n.id !== "string" || !n.id || typeof n.name !== "string" || !(n.relation in REL)) throw new Error("Invalid nation");
-    return { id: n.id, name: n.name, color: /^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color) ? n.color : "#888888", relation: n.relation, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: image(n.flag) };
+    return { id: n.id, name: n.name, color: /^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color) ? n.color : "#888888", relation: n.relation, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: flagImage(n.flag) };
   });
   if (new Set(nations.map(n => n.id)).size !== nations.length) throw new Error("Duplicate nation");
   const ids = new Set(nations.map(n => n.id));
   const tiles: Record<string, string> = {};
-  for (const [key, id] of Object.entries(d["tiles"])) {
+  for (const [key, id] of Object.entries(expandTiles(d["tiles"] as Record<string, string>, factor))) {
     if (!/^\d+,\d+$/.test(key) || typeof id !== "string" || !ids.has(id)) throw new Error("Invalid territory");
     const [x = 0, y = 0] = key.split(",").map(Number);
     if (x >= COLS || y >= ROWS) throw new Error("Invalid cell");
@@ -392,7 +397,7 @@ function readMap(input: unknown): Data {
     if (!l || typeof l.id !== "string" || !["estrada", "rota"].includes(l.type) || !Array.isArray(l.points) || l.points.some(p => !Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite))) throw new Error("Invalid line");
     return { id: l.id, type: l.type, points: l.points };
   });
-  return { ...empty, nations, tiles, markers, lines, bg: image(d["bg"]) ?? null,
+  return { ...empty, cellSize: CELL, nations, tiles, markers, lines, bg: image(d["bg"]) ?? null,
     bgOpacity: finite(d["bgOpacity"], 0.6, 0, 1), bgFit: d["bgFit"] === "cover" || d["bgFit"] === "stretch" ? d["bgFit"] : "contain",
     bgScale: finite(d["bgScale"], 1, 0.2, 3), bgX: finite(d["bgX"], 0, -W, W), bgY: finite(d["bgY"], 0, -H, H), bgRotation: finite(d["bgRotation"], 0, -180, 180),
     smooth: typeof d["smooth"] === "boolean" ? d["smooth"] : true, showGrid: typeof d["showGrid"] === "boolean" ? d["showGrid"] : true };
