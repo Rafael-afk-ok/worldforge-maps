@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History } from "lucide-react";
+import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, ClipboardList, BarChart3, Smartphone, Wheat } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
@@ -22,12 +22,14 @@ type Marker = {
   grossIncome?: number;
   expenses?: number;
   production?: string;
+  foodProduction?: number;
+  foodConsumption?: number;
   photo?: string;
 };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
 type Data = { cellSize?: number; nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
-type AppDialog = { type: "text"; title: string; value: string; onSubmit: (value: string) => void } | { type: "confirm"; title: string; message: string; onSubmit: () => void } | { type: "save"; name: string; description: string; filename: string } | { type: "history"; selectedId: string };
+type AppDialog = { type: "text"; title: string; value: string; onSubmit: (value: string) => void } | { type: "confirm"; title: string; message: string; onSubmit: () => void } | { type: "save"; name: string; description: string; filename: string } | { type: "history"; selectedId: string } | { type: "updates" } | { type: "status" };
 type Tool = "mover" | "pintar" | "balde" | "apagar" | "comentario" | MarkerType | LineType;
 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
@@ -57,6 +59,7 @@ export default function MapApp() {
   const [mapDescription, setMapDescription] = useState("");
   const [versions, setVersions] = useState<MapVersion[]>([]);
   const [deviceMode, setDeviceMode] = useState<"pc" | "celular">("pc");
+  const [orientationPortrait, setOrientationPortrait] = useState(false);
   const [orientationPortrait, setOrientationPortrait] = useState(false);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
 
@@ -123,6 +126,7 @@ export default function MapApp() {
       historyRef.current = [initial];
       historyIndexRef.current = 0;
       updateHistoryState();
+      setDeviceMode(localStorage.getItem("worldforge-device-mode") === "celular" ? "celular" : localStorage.getItem("worldforge-device-mode") === "pc" ? "pc" : window.matchMedia("(max-width: 900px)").matches ? "celular" : "pc");
       setDark(localStorage.getItem("atlas-theme") === "dark");
       const l = localStorage.getItem("atlas-lang"); if (l === "pt" || l === "en" || l === "es") setLang(l);
     } catch {
@@ -130,6 +134,8 @@ export default function MapApp() {
     }
     setLoaded(true);
   }, []);
+  useEffect(() => { if (loaded) localStorage.setItem("worldforge-device-mode", deviceMode); }, [deviceMode, loaded]);
+  useEffect(() => { const check = () => setOrientationPortrait(window.innerHeight > window.innerWidth); check(); window.addEventListener("resize", check); window.addEventListener("orientationchange", check); return () => { window.removeEventListener("resize", check); window.removeEventListener("orientationchange", check); }; }, []);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     if (loaded) localStorage.setItem("atlas-theme", dark ? "dark" : "light");
@@ -256,7 +262,7 @@ export default function MapApp() {
         setData(d => { const tiles = floodFill(c[0], c[1], brush, d.tiles); return { ...d, tiles }; });
       }
     } else if (tool === "capital" || tool === "cidade" || tool === "forte" || tool === "porto") {
-      const m: Marker = { id: uid(), type: tool, shape: tool === "capital" ? "star" : tool === "cidade" ? "circle" : tool === "forte" ? "square" : "diamond", x: wx, y: wy, name: t.newMarker, notes: "", npcs: 100, grossIncome: 50, expenses: 20, production: "" };
+      const m: Marker = { id: uid(), type: tool, shape: tool === "capital" ? "star" : tool === "cidade" ? "circle" : tool === "forte" ? "square" : "diamond", x: wx, y: wy, name: t.newMarker, notes: "", npcs: 100, grossIncome: 50, expenses: 20, foodProduction: 0, foodConsumption: 0, production: "" };
       setData(d => ({ ...d, markers: [...d.markers, m] })); setSel({ kind: "marker", id: m.id });
     } else {
       setDraft(p => [...p, [wx, wy]]);
@@ -343,6 +349,18 @@ export default function MapApp() {
   const selMarker = sel?.kind === "marker" ? data.markers.find(m => m.id === sel.id) : undefined;
   const selLine = sel?.kind === "line" ? data.lines.find(m => m.id === sel.id) : undefined;
   const tileCount = (id: string) => Object.values(data.tiles).filter(t => t === id).length;
+  const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
+  const worldBalance = worldStats.income - worldStats.expenses;
+  const foodBalance = worldStats.foodProduction - worldStats.foodConsumption;
+  const updateLog = [
+    { version: "Atualização atual", title: "Status do mundo e suporte mobile", detail: "Painel de indicadores, economia e alimentação agregadas, seleção de dispositivo e zoom com dois dedos." },
+    { version: "Interface", title: "Textos e janelas internas", detail: "Comentários como textos no mapa, janelas próprias para edição, confirmação, exportação e restauração." },
+    { version: "Mapa", title: "Formas de localidades e zoom distante", detail: "Cidades, capitais, portos e fortes com símbolos configuráveis e visualização em níveis baixos de zoom." },
+    { version: "Gestão", title: "Relações entre nações", detail: "Suseranos e vassalos com validação contra relações circulares." },
+    { version: "Dados", title: "Salvamento, importação e versões", detail: "Exportação JSON com metadados e histórico de versões restauráveis, além de compatibilidade com mapas antigos." },
+    { version: "Editor", title: "Pintura territorial e ferramentas", detail: "Pincel, preenchimento, apagador, estradas, rotas, bandeiras, imagens de fundo e desfazer/refazer." },
+    { version: "Estabilidade", title: "Consistência do mapa", detail: "Ajustes na edição de territórios, preenchimento e integridade das relações entre nações." },
+  ];
 
   const visibleNations = data.nations.filter(n => filter === "todas" || n.relation === filter);
   const territories = useMemo(() => data.nations.map(n => {
@@ -352,7 +370,8 @@ export default function MapApp() {
 
   return (
     <div ref={appRef} className={`atlas-app relative flex w-full overflow-hidden bg-background text-foreground ${fullscreen ? "atlas-fullscreen" : ""}`}>
-      <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
+      {deviceMode === "celular" && orientationPortrait && <div className="absolute inset-0 z-[200] flex items-center justify-center bg-background p-6 text-center"><div className="max-w-sm"><Smartphone className="mx-auto mb-4 h-12 w-12" /><h2 className="font-display text-2xl">Gire o celular</h2><p className="mt-2 text-sm text-muted-foreground">O WorldForge Maps em modo celular funciona apenas na orientação paisagem. Gire o aparelho para continuar.</p><Button className="mt-4" onClick={async () => { try { await appRef.current?.requestFullscreen?.(); const o = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> }; await o?.lock?.("landscape"); } catch { setNotice("Gire o celular manualmente para a orientação paisagem."); } }}>Ativar paisagem</Button></div></div>}
+      <input ref={importRef> type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
       <aside className={`map-tools-panel flex shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-card p-4 ${panelOpen ? "" : "panel-closed"}`}>
         <div className="flex items-center justify-between gap-2"><h1 className="font-display text-2xl leading-none text-primary">{t.appName}</h1><Button size="icon" variant="ghost" className="min-[901px]:hidden" aria-label={t.close} onClick={() => setPanelOpen(false)}><X /></Button></div>
         <section>
@@ -481,10 +500,13 @@ export default function MapApp() {
           <Button variant="ghost" size="icon" aria-label={t.fitMap} title={t.fitMap} onClick={fitMap}><Scan /></Button>
           <Button variant="ghost" size="icon" aria-label={dark ? t.light : t.dark} title={dark ? t.light : t.dark} onClick={() => setDark(v => !v)}>{dark ? <Sun /> : <Moon />}</Button>
           <Button variant="ghost" size="icon" aria-label={fullscreen ? t.exitFullscreen : t.fullscreen} title={fullscreen ? t.exitFullscreen : t.fullscreen} onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize /> : <Maximize />}</Button>
+          <Button variant="ghost" size="icon" aria-label="Status do mundo" title="Status do mundo" onClick={() => setDialog({ type: "status" })}><BarChart3 /></Button>
+          <Button variant="ghost" size="icon" aria-label="Atualizações e logs" title="Atualizações e logs" onClick={() => setDialog({ type: "updates" })}><ClipboardList /></Button>
           <Button variant="ghost" size="icon" aria-label={t.settings} title={t.settings} onClick={() => setSettingsOpen(v => !v)}><Settings /></Button>
         </div>
         <div className="pointer-events-none absolute bottom-3 left-3 rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground">{Math.round(view.z * 100)}% · {t[tool]}</div>
-        {settingsOpen && <div role="dialog" aria-label={t.settings} className="absolute right-3 top-16 z-30 w-64 rounded border border-border bg-card p-4 shadow-lg" onPointerDown={e => e.stopPropagation()}><div className="mb-2 flex items-center justify-between"><h2 className="font-display text-xl">{t.settings}</h2><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setSettingsOpen(false)}><X /></Button></div><label htmlFor="lang" className="label">{t.language}</label><select id="lang" className="field" value={lang} onChange={e => setLang(e.target.value as Lang)}>{LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></div>}
+        <div className="absolute left-3 top-3 z-10 grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-border bg-card/95 p-3 text-xs shadow-sm sm:grid-cols-4"><span>População <b>{worldStats.population.toLocaleString("pt-BR")}</b></span><span>Saldo <b className={worldBalance >= 0 ? "text-emerald-600" : "text-destructive"}>{worldBalance.toLocaleString("pt-BR")}</b></span><span>Comida <b className={foodBalance >= 0 ? "text-emerald-600" : "text-destructive"}>{foodBalance.toLocaleString("pt-BR")}</b></span><span>Localidades <b>{data.markers.length}</b></span></div>
+        {settingsOpen && <div role="dialog" aria-label={t.settings} className="absolute right-3 top-16 z-30 w-64 rounded border border-border bg-card p-4 shadow-lg" onPointerDown={e => e.stopPropagation()}><div className="mb-2 flex items-center justify-between"><h2 className="font-display text-xl">{t.settings}</h2><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setSettingsOpen(false)}><X /></Button></div><label htmlFor="device-mode" className="label">Dispositivo</label><select id="device-mode" className="field mb-3" value={deviceMode} onChange={e => setDeviceMode(e.target.value as "pc" | "celular")}><option value="pc">Computador / PC</option><option value="celular">Celular</option></select>{deviceMode === "celular" && <p className="mb-3 text-xs text-muted-foreground">No celular: use dois dedos para aproximar/afastar. O editor exige orientação paisagem.</p>}<label htmlFor="lang" className="label">{t.language}</label><select id="lang" className="field" value={lang} onChange={e => setLang(e.target.value as Lang)}>{LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></div>}
         {notice && <div role="status" className="absolute bottom-12 left-3 right-3 flex items-center justify-between gap-2 rounded border border-border bg-card p-3 text-sm" onPointerDown={e => e.stopPropagation()}>{notice}<Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setNotice("")}><X /></Button></div>}
       </div>
 
@@ -567,6 +589,7 @@ export default function MapApp() {
               <input placeholder="Ex: Trigo, Minério de Ferro, Madeira..." value={selMarker.production ?? ""} onChange={e => upMarker(selMarker.id, { production: e.target.value })} className="field" />
             </div>
 
+            <div className="grid grid-cols-2 gap-2"><div><label className="label flex items-center gap-1"><Wheat className="h-3 w-3" />Produção de comida</label><input type="number" min={0} value={selMarker.foodProduction ?? 0} onChange={e => upMarker(selMarker.id, { foodProduction: Math.max(0, +e.target.value) })} className="field" /></div><div><label className="label">Gasto de comida</label><input type="number" min={0} value={selMarker.foodConsumption ?? 0} onChange={e => upMarker(selMarker.id, { foodConsumption: Math.max(0, +e.target.value) })} className="field" /></div></div>
             <div><label className="label">{t.notes}</label><textarea rows={4} value={selMarker.notes} onChange={e => upMarker(selMarker.id, { notes: e.target.value })} className="field" /></div>
             <Button variant="ghost" onClick={() => { setData(d => ({ ...d, markers: d.markers.filter(m => m.id !== selMarker.id) })); setSel(null); }} className="text-sm text-destructive">{t.delete}</Button>
           </div>}
@@ -577,7 +600,7 @@ export default function MapApp() {
           </div>}
         </aside>
       )}
-      {dialog && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) setDialog(null); }}><section role="dialog" aria-modal="true" aria-label={dialog.type === "save" ? "Salvar mapa" : dialog.type === "history" ? "Histórico de versões" : dialog.title} className="w-full max-w-lg rounded-lg border border-border bg-card p-5 text-card-foreground shadow-xl"><div className="mb-4 flex items-center justify-between"><h2 className="font-display text-xl">{dialog.type === "save" ? "Salvar mapa e criar versão" : dialog.type === "history" ? "Histórico de versões" : dialog.title}</h2><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setDialog(null)}><X /></Button></div>{dialog.type === "text" && <div className="grid gap-3"><textarea autoFocus rows={4} value={dialog.value} onChange={e => setDialog(d => d?.type === "text" ? { ...d, value: e.target.value } : d)} className="field" placeholder="Digite o texto..." /><p className="text-xs text-muted-foreground">Deixe vazio para excluir um texto existente.</p><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { const current = dialog; if (current.type === "text") current.onSubmit(current.value); setDialog(null); }}>Aplicar</Button></div></div>}{dialog.type === "confirm" && <div className="grid gap-4"><p>{dialog.message}</p><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { const current = dialog; if (current.type === "confirm") current.onSubmit(); setDialog(null); }}>Confirmar</Button></div></div>}{saveDialog && <div className="grid gap-3"><label className="label">Nome do mapa<input className="field mt-1" value={saveDialog.name} onChange={e => setDialog(d => d?.type === "save" ? { ...d, name: e.target.value } : d)} /></label><label className="label">Descrição / observações<textarea rows={3} className="field mt-1" value={saveDialog.description} onChange={e => setDialog(d => d?.type === "save" ? { ...d, description: e.target.value } : d)} /></label><label className="label">Nome do arquivo (sem .json)<input className="field mt-1" value={saveDialog.filename} onChange={e => setDialog(d => d?.type === "save" ? { ...d, filename: e.target.value } : d)} /></label><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { completeExport(saveDialog.name, saveDialog.description, saveDialog.filename); setDialog(null); }}>Salvar e exportar</Button></div></div>}{historyDialog && <div className="grid gap-3"><label className="label">Escolha uma versão<select className="field mt-1" value={historyDialog.selectedId} onChange={e => setDialog(d => d?.type === "history" ? { ...d, selectedId: e.target.value } : d)}>{[...versions].reverse().map(v => <option key={v.id} value={v.id}>{v.name} — {new Date(v.createdAt).toLocaleString()}</option>)}</select></label><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { const version = versions.find(v => v.id === historyDialog.selectedId); if (version) restoreVersion(version); setDialog(null); }}>Restaurar versão</Button></div></div>}</section></div>}
+      {dialog && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) setDialog(null); }}><section role="dialog" aria-modal="true" aria-label={dialog.type === "save" ? "Salvar mapa" : dialog.type === "history" ? "Histórico de versões" : dialog.title} className="w-full max-w-lg rounded-lg border border-border bg-card p-5 text-card-foreground shadow-xl"><div className="mb-4 flex items-center justify-between"><h2 className="font-display text-xl">{dialog.type === "save" ? "Salvar mapa e criar versão" : dialog.type === "history" ? "Histórico de versões" : dialog.type === "updates" ? "Atualizações e logs" : dialog.type === "status" ? "Status do mundo" : dialog.title}</h2><Button variant="ghost" size="icon" aria-label={t.close} onClick={() => setDialog(null)}><X /></Button></div>{dialog.type === "text" && <div className="grid gap-3"><textarea autoFocus rows={4} value={dialog.value} onChange={e => setDialog(d => d?.type === "text" ? { ...d, value: e.target.value } : d)} className="field" placeholder="Digite o texto..." /><p className="text-xs text-muted-foreground">Deixe vazio para excluir um texto existente.</p><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { const current = dialog; if (current.type === "text") current.onSubmit(current.value); setDialog(null); }}>Aplicar</Button></div></div>}{dialog.type === "updates" && <div className="max-h-[65vh] space-y-3 overflow-y-auto">{updateLog.map((item, index) => <article key={item.title} className="rounded-lg border border-border p-3"><div className="mb-1 flex items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wide text-primary">{item.version}</span><span className="text-xs text-muted-foreground">#{updateLog.length-index}</span></div><h3 className="font-semibold">{item.title}</h3><p className="mt-1 text-sm text-muted-foreground">{item.detail}</p></article>)}<p className="text-xs text-muted-foreground">Registro consolidado das funcionalidades implementadas no projeto; os itens não representam necessariamente versões públicas numeradas.</p></div>}{dialog.type === "status" && <div className="grid gap-3"><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{[{label:"População total",value:worldStats.population},{label:"Receita total",value:worldStats.income},{label:"Gastos totais",value:worldStats.expenses},{label:"Saldo econômico",value:worldBalance},{label:"Produção de comida",value:worldStats.foodProduction},{label:"Consumo de comida",value:worldStats.foodConsumption},{label:"Saldo de comida",value:foodBalance},{label:"Localidades",value:data.markers.length},{label:"Nações",value:data.nations.length}].map(item => <div key={item.label} className="rounded-lg border border-border bg-accent/30 p-3"><p className="text-xs text-muted-foreground">{item.label}</p><p className="mt-1 text-lg font-semibold tabular-nums">{item.value.toLocaleString("pt-BR")}</p></div>)}</div><p className="text-xs text-muted-foreground">Os totais são somas dos valores cadastrados em todas as localidades. O saldo econômico é receita menos gastos; o saldo alimentar é produção menos consumo.</p></div>}{dialog.type === "confirm" && <div className="grid gap-4"><p>{dialog.message}</p><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { const current = dialog; if (current.type === "confirm") current.onSubmit(); setDialog(null); }}>Confirmar</Button></div></div>}{saveDialog && <div className="grid gap-3"><label className="label">Nome do mapa<input className="field mt-1" value={saveDialog.name} onChange={e => setDialog(d => d?.type === "save" ? { ...d, name: e.target.value } : d)} /></label><label className="label">Descrição / observações<textarea rows={3} className="field mt-1" value={saveDialog.description} onChange={e => setDialog(d => d?.type === "save" ? { ...d, description: e.target.value } : d)} /></label><label className="label">Nome do arquivo (sem .json)<input className="field mt-1" value={saveDialog.filename} onChange={e => setDialog(d => d?.type === "save" ? { ...d, filename: e.target.value } : d)} /></label><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { completeExport(saveDialog.name, saveDialog.description, saveDialog.filename); setDialog(null); }}>Salvar e exportar</Button></div></div>}{historyDialog && <div className="grid gap-3"><label className="label">Escolha uma versão<select className="field mt-1" value={historyDialog.selectedId} onChange={e => setDialog(d => d?.type === "history" ? { ...d, selectedId: e.target.value } : d)}>{[...versions].reverse().map(v => <option key={v.id} value={v.id}>{v.name} — {new Date(v.createdAt).toLocaleString()}</option>)}</select></label><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialog(null)}>Cancelar</Button><Button onClick={() => { const version = versions.find(v => v.id === historyDialog.selectedId); if (version) restoreVersion(version); setDialog(null); }}>Restaurar versão</Button></div></div>}</section></div>}
     </div>
   );
 }
@@ -626,6 +649,8 @@ function readMap(input: unknown): Data {
       npcs: num(m.npcs, 0),
       grossIncome: num(m.grossIncome, 0),
       expenses: num(m.expenses, 0),
+      foodProduction: num(m.foodProduction, 0),
+      foodConsumption: num(m.foodConsumption, 0),
       production: text(m.production),
       photo: flagImage(m.photo),
       shape: ["circle", "square", "triangle", "star", "diamond", "hexagon", "cross"].includes(m.shape) ? m.shape : (m.type === "capital" ? "star" : m.type === "forte" ? "square" : m.type === "porto" ? "diamond" : "circle"),
