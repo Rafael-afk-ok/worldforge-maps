@@ -18,7 +18,7 @@ type Marker = {
   grossIncome?: number;
   expenses?: number;
   production?: string;
-  photo?: string;
+  photo?: string | undefined;
 };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
@@ -458,8 +458,8 @@ export default function MapApp() {
       const ratio = currentDist / pinchStartDist.current;
       const r = ref.current?.getBoundingClientRect();
       if (r) {
-        const midX = (pts[0].x + pts[1].x) / 2 - r.left;
-        const midY = (pts[0].y + pts[1].y) / 2 - r.top;
+        const midX = (pts[0]!.x + pts[1]!.x) / 2 - r.left;
+        const midY = (pts[0]!.y + pts[1]!.y) / 2 - r.top;
         const targetZ = Math.min(4, Math.max(0.08, pinchStartZoom.current * ratio));
         const k = targetZ / viewRef.current.z;
         setView(v => ({
@@ -729,7 +729,7 @@ export default function MapApp() {
           {/* Destaque visual da máscara do mar (quando ativado) */}
           {data.showSea && Object.keys(data.seaTiles ?? {}).map(k => {
             const [x, y] = k.split(",").map(Number);
-            return <rect key={k} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill="#3b82f6" opacity={0.35} pointerEvents="none" />;
+            return <rect key={k} x={(x ?? 0) * CELL} y={(y ?? 0) * CELL} width={CELL} height={CELL} fill="#3b82f6" opacity={0.35} pointerEvents="none" />;
           })}
 
           {/* Territórios das Nações */}
