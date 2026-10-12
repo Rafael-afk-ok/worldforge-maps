@@ -816,8 +816,8 @@ export default function MapApp() {
           {/* Mira transparente do pincel: o raio corresponde à área pintada. */}
           {cursorPos && (tool === "pintar" || tool === "apagar" || tool === "mar" || tool === "terra") && (
             <circle
-              cx={(Math.floor(cursorPos.x / CELL) + 0.5) * CELL}
-              cy={(Math.floor(cursorPos.y / CELL) + 0.5) * CELL}
+              cx={cursorPos.x}
+              cy={cursorPos.y}
               r={Math.max(CELL / 2, (brushSize - 0.5) * CELL)}
               fill={tool === "apagar" ? "#ef4444" : tool === "mar" ? "#3b82f6" : tool === "terra" ? "#22c55e" : (brush ? nationById(brush)?.color ?? "#ffffff" : "#ffffff")}
               fillOpacity={0.16}
