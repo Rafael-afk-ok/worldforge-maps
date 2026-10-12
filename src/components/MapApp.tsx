@@ -18,7 +18,7 @@ type Marker = {
   grossIncome?: number;
   expenses?: number;
   production?: string;
-  photo?: string;
+  photo?: string | undefined;
 };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
@@ -137,7 +137,7 @@ export default function MapApp() {
     if (historyIndexRef.current > 0) {
       historyIndexRef.current--;
       const prevState = historyRef.current[historyIndexRef.current];
-      setData(prevState);
+      if (prevState) setData(prevState);
       updateHistoryState();
     }
   };
@@ -146,7 +146,7 @@ export default function MapApp() {
     if (historyIndexRef.current < historyRef.current.length - 1) {
       historyIndexRef.current++;
       const nextState = historyRef.current[historyIndexRef.current];
-      setData(nextState);
+      if (nextState) setData(nextState);
       updateHistoryState();
     }
   };
@@ -284,6 +284,26 @@ export default function MapApp() {
     });
   };
 
+  useEffect(() => { const id = requestAnimationFrame(fitMap); return () => cancelAnimationFrame(id); }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1);
+      setView(v => {
+        const z = Math.min(4, Math.max(0.08, v.z * Math.exp(-dy * 0.0015)));
+        const k = z / v.z;
+        return { z, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   const toggleFullscreen = async () => {
     if (fullscreen) {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -337,7 +357,7 @@ export default function MapApp() {
         for (let py = 0; py < offscreen.height; py++) {
           for (let px = 0; px < offscreen.width; px++) {
             const idx = (py * offscreen.width + px) * 4;
-            const r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2], a = imgData[idx + 3];
+            const r = imgData[idx] ?? 0, g = imgData[idx + 1] ?? 0, b = imgData[idx + 2] ?? 0, a = imgData[idx + 3] ?? 0;
             if (a > 30) {
               const dist = Math.hypot(r - tr, g - tg, b - tb);
               if (dist <= tolDist) {
@@ -372,7 +392,7 @@ export default function MapApp() {
     // Início de gesto de 2 dedos (pinch-to-zoom)
     if (activePointers.current.size === 2) {
       const pts = Array.from(activePointers.current.values());
-      pinchStartDist.current = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchStartDist.current = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
       pinchStartZoom.current = view.z;
       drag.current = null;
       return;
@@ -436,12 +456,12 @@ export default function MapApp() {
     // Trata pinch-to-zoom com 2 dedos
     if (activePointers.current.size === 2 && pinchStartDist.current) {
       const pts = Array.from(activePointers.current.values());
-      const currentDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const currentDist = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
       const ratio = currentDist / pinchStartDist.current;
       const r = ref.current?.getBoundingClientRect();
       if (r) {
-        const midX = (pts[0].x + pts[1].x) / 2 - r.left;
-        const midY = (pts[0].y + pts[1].y) / 2 - r.top;
+        const midX = (pts[0]!.x + pts[1]!.x) / 2 - r.left;
+        const midY = (pts[0]!.y + pts[1]!.y) / 2 - r.top;
         const targetZ = Math.min(4, Math.max(0.08, pinchStartZoom.current * ratio));
         const k = targetZ / viewRef.current.z;
         setView(v => ({
@@ -697,7 +717,7 @@ export default function MapApp() {
       </aside>
 
       <main ref={ref} className="relative flex-1 touch-none select-none overflow-hidden bg-muted/20" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onPointerUp} onPointerLeave={() => { setCursorPos(null); stopDrag(); }}>
-        <svg className="h-full w-full" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="absolute left-0 top-0 max-w-none overflow-visible" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
           <defs>
             <pattern id="g" width={CELL * 10} height={CELL * 10} patternUnits="userSpaceOnUse">
               <path d={`M ${CELL * 10} 0 L 0 0 0 ${CELL * 10}`} fill="none" stroke="currentColor" strokeWidth={0.5} opacity={0.15} />
@@ -711,7 +731,7 @@ export default function MapApp() {
           {/* Destaque visual da máscara do mar (quando ativado) */}
           {data.showSea && Object.keys(data.seaTiles ?? {}).map(k => {
             const [x, y] = k.split(",").map(Number);
-            return <rect key={k} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill="#3b82f6" opacity={0.35} pointerEvents="none" />;
+            return <rect key={k} x={(x ?? 0) * CELL} y={(y ?? 0) * CELL} width={CELL} height={CELL} fill="#3b82f6" opacity={0.35} pointerEvents="none" />;
           })}
 
           {/* Territórios das Nações */}
