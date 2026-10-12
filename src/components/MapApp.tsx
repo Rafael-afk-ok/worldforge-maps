@@ -551,9 +551,8 @@ export default function MapApp() {
           <h2 className="label">{tx("Ações rápidas", "Quick actions", "Acciones rápidas")}</h2>
           <div className="mb-2 grid grid-cols-2 gap-1"><Button variant="outline" size="sm" onClick={() => { setTutorialStep(0); setDialog({ type: "tutorial" }); }}><GraduationCap className="h-4 w-4" />{tx("Tutorial", "Tutorial", "Tutorial")}</Button><Button variant="outline" size="sm" onClick={() => setDialog({ type: "compare" })}><GitCompareArrows className="h-4 w-4" />{tx("Comparar", "Compare", "Comparar")}</Button><Button variant="outline" size="sm" onClick={() => { setDiplomacyExpanded([]); setDialog({ type: "diplomacy" }); }}><Users className="h-4 w-4" />{tx("Diplomacia", "Diplomacy", "Diplomacia")}</Button><Button variant="outline" size="sm" onClick={exportPng}><Download className="h-4 w-4" />{tx("Exportar PNG", "Export PNG", "Exportar PNG")}</Button></div>
         </section>
-        <section>
-          
-          <h2 className="label">{t.tools}</h2>
+        <details open className="rounded-md border border-border p-2"><summary className="cursor-pointer select-none font-semibold">{t.tools}</summary><section className="mt-3">
+          <h2 className="label">{tx("Ferramentas do mapa", "Map tools", "Herramientas del mapa")}</h2>
           <div className="grid gap-1">
             {TOOLS.map(id => (
               <Button variant="ghost" key={id} onClick={() => { setTool(id); setDraft([]); if ((id === "pintar" || id === "balde") && !brush) { const first = visibleNations[0] ?? data.nations[0]; if (first) setBrush(first.id); else setNotice(t.createFirst); } }}
