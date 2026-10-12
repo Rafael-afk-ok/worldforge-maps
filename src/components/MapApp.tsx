@@ -70,6 +70,8 @@ export default function MapApp() {
   const [tutorialStep, setTutorialStep] = useState(0);
   const [notice, setNotice] = useState("");
   const [lang, setLang] = useState<Lang>("pt");
+  const [languageSetup, setLanguageSetup] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [flagUrl, setFlagUrl] = useState("");
   const [markerPhotoUrl, setMarkerPhotoUrl] = useState("");
@@ -145,9 +147,14 @@ export default function MapApp() {
       historyRef.current = [initial];
       historyIndexRef.current = 0;
       updateHistoryState();
-      setDeviceMode(localStorage.getItem("worldforge-device-mode") === "celular" ? "celular" : localStorage.getItem("worldforge-device-mode") === "pc" ? "pc" : window.matchMedia("(max-width: 900px)").matches ? "celular" : "pc");
+      const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent);
+      const coarseSmallScreen = window.matchMedia("(pointer: coarse)").matches && window.matchMedia("(max-width: 900px)").matches;
+      setIsMobileDevice(mobileUA || coarseSmallScreen);
+      setDeviceMode(localStorage.getItem("worldforge-device-mode") === "celular" ? "celular" : localStorage.getItem("worldforge-device-mode") === "pc" ? "pc" : (mobileUA || coarseSmallScreen) ? "celular" : "pc");
       setDark(localStorage.getItem("atlas-theme") === "dark");
-      const l = localStorage.getItem("atlas-lang"); if (l === "pt" || l === "en" || l === "es") setLang(l);
+      const l = localStorage.getItem("atlas-lang");
+      if (l === "pt" || l === "en" || l === "es") setLang(l);
+      else setLanguageSetup(true);
     } catch {
       historyRef.current = [empty]; historyIndexRef.current = 0; updateHistoryState();
     }
@@ -159,7 +166,7 @@ export default function MapApp() {
     document.documentElement.classList.toggle("dark", dark);
     if (loaded) localStorage.setItem("atlas-theme", dark ? "dark" : "light");
   }, [dark, loaded]);
-  useEffect(() => { document.documentElement.lang = lang === "pt" ? "pt-BR" : lang; if (loaded) localStorage.setItem("atlas-lang", lang); }, [lang, loaded]);
+  useEffect(() => { document.documentElement.lang = lang === "pt" ? "pt-BR" : lang; if (loaded && !languageSetup) localStorage.setItem("atlas-lang", lang); }, [lang, loaded, languageSetup]);
   useEffect(() => {
     const changed = () => { if (!document.fullscreenElement) { setFullscreen(false); screen.orientation?.unlock?.(); } };
     const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") { setFullscreen(false); screen.orientation?.unlock?.(); } };
@@ -513,7 +520,8 @@ export default function MapApp() {
 
   return (
     <div ref={appRef} className={`atlas-app relative flex w-full overflow-hidden bg-background text-foreground ${fullscreen ? "atlas-fullscreen" : ""}`}>
-      {deviceMode === "celular" && orientationPortrait && <div className="absolute inset-0 z-[200] flex items-center justify-center bg-background p-6 text-center"><div className="max-w-sm"><Smartphone className="mx-auto mb-4 h-12 w-12" /><h2 className="font-display text-2xl">Gire o celular</h2><p className="mt-2 text-sm text-muted-foreground">O WorldForge Maps em modo celular funciona apenas na orientação paisagem. Gire o aparelho para continuar.</p><Button className="mt-4" onClick={async () => { try { await appRef.current?.requestFullscreen?.(); const o = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> }; await o?.lock?.("landscape"); } catch { setNotice("Gire o celular manualmente para a orientação paisagem."); } }}>Ativar paisagem</Button></div></div>}
+      {isMobileDevice && orientationPortrait && !languageSetup && <div className="absolute inset-0 z-[200] flex items-center justify-center bg-background p-6 text-center"><div className="max-w-sm"><Smartphone className="mx-auto mb-4 h-12 w-12" /><h2 className="font-display text-2xl">{lang === "pt" ? "Gire o celular" : lang === "es" ? "Gira el móvil" : "Rotate your phone"}</h2><p className="mt-2 text-sm text-muted-foreground">{lang === "pt" ? "O WorldForge Maps funciona no celular apenas na orientação horizontal. Gire o aparelho para continuar." : lang === "es" ? "WorldForge Maps en móviles solo funciona en orientación horizontal. Gira el dispositivo para continuar." : "WorldForge Maps on phones only works in landscape orientation. Rotate your device to continue."}</p><Button className="mt-4" onClick={async () => { try { await appRef.current?.requestFullscreen?.(); const o = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> }; await o?.lock?.("landscape"); } catch { setNotice(lang === "pt" ? "Gire o celular manualmente para a orientação horizontal." : lang === "es" ? "Gira el móvil manualmente a la orientación horizontal." : "Rotate your phone manually to landscape orientation."); } }}>{lang === "pt" ? "Ativar paisagem" : lang === "es" ? "Activar horizontal" : "Enable landscape"}</Button></div></div>}
+      {languageSetup && <div className="fixed inset-0 z-[300] flex items-center justify-center bg-background p-6"><div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-xl"><h2 className="font-display text-2xl font-semibold">{lang === "pt" ? "Escolha seu idioma" : lang === "es" ? "Elige tu idioma" : "Choose your language"}</h2><p className="mt-2 text-sm text-muted-foreground">{lang === "pt" ? "Selecione o idioma para usar o WorldForge Maps. Você poderá alterá-lo nas configurações." : lang === "es" ? "Selecciona el idioma de WorldForge Maps. Podrás cambiarlo en la configuración." : "Select the language for WorldForge Maps. You can change it later in Settings."}</p><div className="mt-5 grid gap-2">{LANGS.map(option => <Button key={option.id} variant={lang === option.id ? "default" : "outline"} className="w-full" onClick={() => setLang(option.id)}>{option.label}</Button>)}</div><Button className="mt-4 w-full" onClick={() => { localStorage.setItem("atlas-lang", lang); setLanguageSetup(false); }}>{lang === "pt" ? "Continuar" : lang === "es" ? "Continuar" : "Continue"}</Button></div></div>}
       <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
       <aside className={`map-tools-panel flex shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-card p-4 ${panelOpen ? "" : "panel-closed"}`}>
         <div className="flex items-center justify-between gap-2"><h1 className="font-display text-2xl leading-none text-primary">{t.appName}</h1><Button size="icon" variant="ghost" className="min-[901px]:hidden" aria-label={t.close} onClick={() => setPanelOpen(false)}><X /></Button></div>
