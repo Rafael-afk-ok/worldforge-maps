@@ -360,7 +360,7 @@ export default function MapApp() {
           <div className="grid gap-1">
             {TOOLS.map(id => (
               <Button variant="ghost" key={id} onClick={() => { setTool(id); setDraft([]); if ((id === "pintar" || id === "balde") && !brush) { const first = visibleNations[0] ?? data.nations[0]; if (first) setBrush(first.id); else setNotice(t.createFirst); } }}
-                className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{({ comentario: "Comentário fixado", regiao: "Editar regiões" } as Record<string, string>)[id] ?? t[id]}</Button>
+                className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{({ comentario: "Comentário fixado", regiao: "Editar regiões" } as Record<string, string>)[id] ?? (t as Record<string, string>)[id]}</Button>
             ))}
           </div>
           {(tool === "pintar" || tool === "apagar") && <div className="mt-3"><label htmlFor="brush-size" className="label">{t.brushSize} · {brushSize}</label><input id="brush-size" type="range" min={1} max={10} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
