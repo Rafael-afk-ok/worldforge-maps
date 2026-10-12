@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins } from "lucide-react";
+import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
@@ -47,6 +47,14 @@ export default function MapApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [flagUrl, setFlagUrl] = useState("");
   const [markerPhotoUrl, setMarkerPhotoUrl] = useState("");
+
+  const historyRef = useRef<Data[]>([]);
+  const historyIndexRef = useRef(-1);
+  const restoringHistoryRef = useRef(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+
   const t = DICTS[lang];
   const REL: Record<Relation, string> = { propria: t.rel_propria, aliada: t.rel_aliada, neutra: t.rel_neutra, inimiga: t.rel_inimiga };
   const appRef = useRef<HTMLDivElement>(null);
@@ -63,8 +71,47 @@ export default function MapApp() {
   viewRef.current = view;
   const drag = useRef<{ mode: "pan" | "paint"; sx: number; sy: number; vx: number; vy: number } | null>(null);
 
+  const updateHistoryState = () => {
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+  };
+  const pushHistory = (snapshot: Data) => {
+    if (historyRef.current[historyIndexRef.current] === snapshot) return;
+    const next = historyRef.current.slice(0, historyIndexRef.current + 1);
+    next.push(snapshot);
+    if (next.length > 50) next.shift();
+    historyRef.current = next;
+    historyIndexRef.current = next.length - 1;
+    updateHistoryState();
+  };
+  const handleUndo = () => {
+    if (historyIndexRef.current <= 0) return;
+    historyIndexRef.current--;
+    const snapshot = historyRef.current[historyIndexRef.current];
+    if (snapshot) { restoringHistoryRef.current = true; setData(snapshot); }
+    updateHistoryState();
+  };
+  const handleRedo = () => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current++;
+    const snapshot = historyRef.current[historyIndexRef.current];
+    if (snapshot) { restoringHistoryRef.current = true; setData(snapshot); }
+    updateHistoryState();
+  };
+
   useEffect(() => {
-    try { const s = localStorage.getItem(KEY); if (s) setData(readMap(JSON.parse(s))); setDark(localStorage.getItem("atlas-theme") === "dark"); const l = localStorage.getItem("atlas-lang"); if (l === "pt" || l === "en" || l === "es") setLang(l); } catch {}
+    try {
+      const s = localStorage.getItem(KEY);
+      const initial = s ? readMap(JSON.parse(s)) : empty;
+      setData(initial);
+      historyRef.current = [initial];
+      historyIndexRef.current = 0;
+      updateHistoryState();
+      setDark(localStorage.getItem("atlas-theme") === "dark");
+      const l = localStorage.getItem("atlas-lang"); if (l === "pt" || l === "en" || l === "es") setLang(l);
+    } catch {
+      historyRef.current = [empty]; historyIndexRef.current = 0; updateHistoryState();
+    }
     setLoaded(true);
   }, []);
   useEffect(() => {
@@ -79,7 +126,26 @@ export default function MapApp() {
     document.addEventListener("keydown", keydown);
     return () => { document.removeEventListener("fullscreenchange", changed); document.removeEventListener("keydown", keydown); };
   }, []);
+  useEffect(() => {
+    if (!loaded) return;
+    if (restoringHistoryRef.current) { restoringHistoryRef.current = false; return; }
+    if (drag.current?.mode === "paint") return;
+    pushHistory(data);
+  }, [data, loaded]);
+
   useEffect(() => { if (loaded) try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { setNotice(t.storageFull); } }, [data, loaded]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); handleUndo(); }
+      else if (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey)) { e.preventDefault(); handleRedo(); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     const el = ref.current; if (!el) return;
@@ -118,7 +184,12 @@ export default function MapApp() {
     });
   }, [tool, brush, view, brushSize]);
 
-  const stopDrag = () => { drag.current = null; lastPaint.current = null; };
+  const stopDrag = () => {
+    const finished = drag.current;
+    drag.current = null;
+    lastPaint.current = null;
+    if (finished?.mode === "paint") pushHistory(data);
+  };
   const fitMap = () => {
     const r = ref.current?.getBoundingClientRect(); if (!r) return;
     const z = Math.min((r.width - 40) / W, (r.height - 70) / H);
@@ -174,6 +245,8 @@ export default function MapApp() {
     }
   };
   const onMove = (e: React.PointerEvent) => {
+    const [wx, wy] = toWorld(e.clientX, e.clientY);
+    setCursorPos({ x: (Math.floor(wx / CELL) + 0.5) * CELL, y: (Math.floor(wy / CELL) + 0.5) * CELL });
     const d = drag.current; if (!d) return;
     if (d.mode === "pan") setView(v => ({ ...v, x: d.vx + e.clientX - d.sx, y: d.vy + e.clientY - d.sy }));
     else if (d.mode === "paint") paint(e.clientX, e.clientY);
@@ -353,10 +426,20 @@ export default function MapApp() {
               </g>
             );
           })}
+          {cursorPos && (tool === "pintar" || tool === "apagar") && (
+            <circle cx={cursorPos.x} cy={cursorPos.y}
+              r={Math.max(CELL / 2, (brushSize - 0.5) * CELL)}
+              fill={tool === "apagar" ? "#ef4444" : (brush ? nationById(brush)?.color ?? "#ffffff" : "#ffffff")}
+              fillOpacity={0.08}
+              stroke={tool === "apagar" ? "#ef4444" : (brush ? nationById(brush)?.color ?? "#ffffff" : "#ffffff")}
+              strokeOpacity={0.9} strokeWidth={1.5} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+          )}
         </svg>
 
         <div className="map-toolbar" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
           <Button variant="ghost" size="icon" className="min-[901px]:hidden" aria-label={t.tools} title={t.tools} onClick={() => setPanelOpen(v => !v)}><Menu /></Button>
+          <Button variant="ghost" size="icon" disabled={!canUndo} aria-label={t.undo} title={t.undo} onClick={handleUndo}><Undo className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" disabled={!canRedo} aria-label={t.redo} title={t.redo} onClick={handleRedo}><Redo className="h-4 w-4" /></Button>
           <Button variant="ghost" size="icon" aria-label={t.zoomOut} title={t.zoomOut} onClick={() => zoom(0.8)}><Minus /></Button>
           <Button variant="ghost" size="icon" aria-label={t.zoomIn} title={t.zoomIn} onClick={() => zoom(1.25)}><Plus /></Button>
           <Button variant="ghost" size="icon" aria-label={t.fitMap} title={t.fitMap} onClick={fitMap}><Scan /></Button>
