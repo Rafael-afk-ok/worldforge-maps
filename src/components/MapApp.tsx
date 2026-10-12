@@ -262,9 +262,14 @@ export default function MapApp() {
   }, [tool, brush, brushSize]);
 
   const stopDrag = () => {
+    const finishedDrag = drag.current;
     drag.current = null;
     lastPaint.current = null;
-    pushHistory(data);
+
+    // Só o traço contínuo precisa registrar o snapshot ao terminar.
+    // Outras ações já registram seu próprio estado; duplicá-lo aqui impede
+    // que o primeiro Undo desfaça a ação visível.
+    if (finishedDrag?.mode === "paint") pushHistory(data);
   };
 
   const fitMap = () => {
@@ -808,18 +813,19 @@ export default function MapApp() {
             );
           })}
 
-          {/* Mira do Pincel (Bolinha semitransparente que acompanha o ponteiro) */}
+          {/* Mira transparente do pincel: o raio corresponde à área pintada. */}
           {cursorPos && (tool === "pintar" || tool === "apagar" || tool === "mar" || tool === "terra") && (
             <circle
               cx={cursorPos.x}
               cy={cursorPos.y}
-              r={brushSize * CELL * 1.4}
-              fill={tool === "apagar" ? "rgba(239, 68, 68, 0.25)" : tool === "mar" ? "rgba(59, 130, 246, 0.35)" : tool === "terra" ? "rgba(34, 197, 94, 0.35)" : (brush ? nationById(brush)?.color : "rgba(255, 255, 255, 0.25)")}
-              stroke="white"
+              r={Math.max(CELL / 2, (brushSize - 0.5) * CELL)}
+              fill={tool === "apagar" ? "#ef4444" : tool === "mar" ? "#3b82f6" : tool === "terra" ? "#22c55e" : (brush ? nationById(brush)?.color ?? "#ffffff" : "#ffffff")}
+              fillOpacity={0.16}
+              stroke={tool === "apagar" ? "#ef4444" : tool === "mar" ? "#3b82f6" : tool === "terra" ? "#22c55e" : (brush ? nationById(brush)?.color ?? "#ffffff" : "#ffffff")}
               strokeWidth={1.5}
               strokeDasharray="3 2"
+              vectorEffect="non-scaling-stroke"
               pointerEvents="none"
-              opacity={0.85}
             />
           )}
         </svg>
