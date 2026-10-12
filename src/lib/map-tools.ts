@@ -29,20 +29,17 @@ export function strokeCells(from: [number, number], to: [number, number], radius
   return result;
 }
 
-/** Preenchimento tipo balde de tinta em áreas contíguas/circuladas (com trava opcional de mar) */
+/** Preenchimento tipo balde de tinta em áreas contíguas/circuladas */
 export function floodFill(
   startX: number,
   startY: number,
   fillId: string,
   tiles: Record<string, string>,
-  seaTiles?: Record<string, boolean>,
-  lockSea = false,
   cols = MAP_COLS,
   rows = MAP_ROWS,
   maxCells = 80000
 ): Record<string, string> {
   const startKey = `${startX},${startY}`;
-  if (lockSea && seaTiles?.[startKey]) return tiles;
   const targetId = tiles[startKey] ?? "";
   if (targetId === fillId) return tiles;
 
@@ -60,8 +57,8 @@ export function floodFill(
   visited.add(startKey);
 
   while (head < tail && tail < maxCells) {
-    const x = queueX[head] ?? 0;
-    const y = queueY[head] ?? 0;
+    const x = queueX[head];
+    const y = queueY[head];
     head++;
 
     const key = `${x},${y}`;
@@ -76,12 +73,11 @@ export function floodFill(
     ];
 
     for (let i = 0; i < 4; i++) {
-      const [nx = 0, ny = 0] = neighbors[i] ?? [];
+      const [nx, ny] = neighbors[i];
       if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
         const nKey = `${nx},${ny}`;
         if (!visited.has(nKey)) {
           visited.add(nKey);
-          if (lockSea && seaTiles?.[nKey]) continue;
           const nVal = tiles[nKey] ?? "";
           if (nVal === targetId) {
             if (tail < maxCells) {
@@ -107,7 +103,7 @@ export function territoryPath(keys: string[], smooth: boolean) {
     const [x = 0, y = 0] = key.split(',').map(Number);
     if (!cells.has(`${x},${y - 1}`)) add(`${x},${y}`, `${x + 1},${y}`);
     if (!cells.has(`${x + 1},${y}`)) add(`${x + 1},${y}`, `${x + 1},${y + 1}`);
-    if (!cells.has(`${x + 1},${y + 1}`)) add(`${x + 1},${y + 1}`, `${x},${y + 1}`);
+    if (!cells.has(`${x},${y + 1}`)) add(`${x + 1},${y + 1}`, `${x},${y + 1}`);
     if (!cells.has(`${x - 1},${y}`)) add(`${x},${y + 1}`, `${x},${y}`);
   }
   let path = '';
