@@ -368,15 +368,18 @@ export default function MapApp() {
   const worldBalance = worldStats.income - worldStats.expenses;
   const foodBalance = worldStats.foodProduction - worldStats.foodConsumption;
   const updateLog = [
-    { version: "Atualização atual", title: "Status do mundo, suporte mobile e remoção de regiões", detail: "Painel de indicadores, economia e alimentação agregadas, seleção de dispositivo, zoom com dois dedos e remoção completa da mecânica de regiões." },
-    { version: "Interface", title: "Textos e janelas internas", detail: "Comentários como textos no mapa, janelas próprias para edição, confirmação, exportação e restauração." },
-    { version: "Mapa", title: "Formas de localidades e zoom distante", detail: "Cidades, capitais, portos e fortes com símbolos configuráveis e visualização em níveis baixos de zoom." },
-    { version: "Gestão", title: "Relações entre nações", detail: "Suseranos e vassalos com validação contra relações circulares." },
-    { version: "Dados", title: "Salvamento, importação e versões", detail: "Exportação JSON com metadados e histórico de versões restauráveis, além de compatibilidade com mapas antigos." },
-    { version: "Editor", title: "Pintura territorial e ferramentas", detail: "Pincel, preenchimento, apagador, estradas, rotas, bandeiras, imagens de fundo e desfazer/refazer." },
-    { version: "Estabilidade", title: "Consistência do mapa", detail: "Ajustes na edição de territórios, preenchimento e integridade das relações entre nações." },
+    { version: "e6237f0", title: "Acessibilidade das janelas", detail: "Correção dos rótulos acessíveis das janelas de status e atualizações." },
+    { version: "a8d4d6b", title: "Zoom com dois dedos", detail: "Gestos de pinça para aproximar e afastar o mapa no modo celular." },
+    { version: "d3a844c", title: "Status, alimentação e logs", detail: "Indicadores de população, receitas, gastos, saldo econômico, produção e consumo de comida; configuração PC/celular e orientação paisagem." },
+    { version: "1ad416a", title: "Remoção completa de regiões", detail: "Removidas a ferramenta, a interface, as fronteiras, as atribuições e o processamento de regiões; mapas antigos continuam sendo importados sem essa mecânica." },
+    { version: "b63b097", title: "Janelas internas e símbolos", detail: "Substituição dos diálogos nativos por janelas do editor, comentários em texto simples, formas configuráveis para localidades e zoom mais distante." },
+    { version: "a4d7219", title: "Atribuição regional por pincel", detail: "Ajuste histórico para atribuir células a regiões usando o tamanho do pincel, antes da remoção da mecânica." },
+    { version: "11572a0", title: "Estabilidade da edição", detail: "Prevenção de atualizações de estado aninhadas ao editar regiões e relações de vassalagem." },
+    { version: "6182d60", title: "Preenchimento territorial", detail: "Correção da consistência de atribuições regionais após preenchimento com balde." },
+    { version: "86d53d4", title: "Territórios e regiões", detail: "Manutenção da consistência das atribuições regionais quando o território das nações é alterado." },
+    { version: "ba8affb", title: "Correção de TypeScript", detail: "Ajuste na identificação de rótulos das ferramentas para resolver erro de tipagem." },
+    { version: "Histórico", title: "Ferramentas principais do editor", detail: "Pintura de nações, preenchimento, apagador, estradas, rotas, bandeiras, imagens de fundo, desfazer/refazer, exportação JSON, importação e histórico de versões." },
   ];
-
   const visibleNations = data.nations.filter(n => filter === "todas" || n.relation === filter);
   const territories = useMemo(() => data.nations.map(n => {
     const keys = Object.entries(data.tiles).filter(([, id]) => id === n.id).map(([key]) => key);
