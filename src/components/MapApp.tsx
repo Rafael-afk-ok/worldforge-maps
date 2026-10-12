@@ -554,7 +554,7 @@ export default function MapApp() {
   const wars = data.wars ?? [];
   const focusedNation = sel?.kind === "nation" ? data.nations.find(n => n.id === sel.id) : undefined;
   const relationToPlayer = (nation: Nation): Relation => nation.id === data.playerNationId ? "propria" : nation.relations?.[data.playerNationId ?? ""] ?? nation.relation;
-  const viewerReferenceId = viewerReferenceNationId || data.playerNationId || "";
+  const viewerReferenceId = viewerReferenceNationId;
   const relationToViewerReference = (nation: Nation): Relation => !viewerReferenceId ? nation.relation : nation.id === viewerReferenceId ? "propria" : nation.relations?.[viewerReferenceId] ?? nation.relation;
   const viewerVisibleNations = data.nations.filter(n => {
     const q = viewerNationSearch.trim().toLocaleLowerCase();
