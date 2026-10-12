@@ -191,7 +191,7 @@ export default function MapApp() {
       for (const cell of cells) {
         if (tool === "apagar") delete tiles[cell]; else if (brush) tiles[cell] = brush;
       }
-      return { ...d, tiles };
+      return { ...d, tiles, regions: d.regions.map(region => ({ ...region, cells: region.cells.filter(cell => tiles[cell] === region.nationId) })) };
     });
   }, [tool, brush, view, brushSize]);
 
