@@ -355,7 +355,7 @@ export default function MapApp() {
         for (let py = 0; py < offscreen.height; py++) {
           for (let px = 0; px < offscreen.width; px++) {
             const idx = (py * offscreen.width + px) * 4;
-            const r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2], a = imgData[idx + 3];
+            const r = imgData[idx] ?? 0, g = imgData[idx + 1] ?? 0, b = imgData[idx + 2] ?? 0, a = imgData[idx + 3] ?? 0;
             if (a > 30) {
               const dist = Math.hypot(r - tr, g - tg, b - tb);
               if (dist <= tolDist) {
@@ -390,7 +390,7 @@ export default function MapApp() {
     // Início de gesto de 2 dedos (pinch-to-zoom)
     if (activePointers.current.size === 2) {
       const pts = Array.from(activePointers.current.values());
-      pinchStartDist.current = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchStartDist.current = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
       pinchStartZoom.current = view.z;
       drag.current = null;
       return;
@@ -454,7 +454,7 @@ export default function MapApp() {
     // Trata pinch-to-zoom com 2 dedos
     if (activePointers.current.size === 2 && pinchStartDist.current) {
       const pts = Array.from(activePointers.current.values());
-      const currentDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const currentDist = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
       const ratio = currentDist / pinchStartDist.current;
       const r = ref.current?.getBoundingClientRect();
       if (r) {
