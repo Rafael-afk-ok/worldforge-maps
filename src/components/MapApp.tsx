@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo } from "lucide-react";
+import { Moon, Sun, Maximize, Minimize, Menu, X, Plus, Minus, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
 type Relation = "propria" | "aliada" | "neutra" | "inimiga";
-type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined };
+type Nation = { id: string; name: string; color: string; relation: Relation; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string };
+type MapComment = { id: string; x: number; y: number; text: string; createdAt: string };
+type Region = { id: string; name: string; nationId: string; color: string; cells: string[] };
+type MapVersion = { id: string; name: string; description: string; createdAt: string; data: Data };
 type MarkerType = "capital" | "cidade" | "forte" | "porto";
 type Marker = {
   id: string;
@@ -22,16 +25,16 @@ type Marker = {
 };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
-type Data = { cellSize?: number; nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
-type Tool = "mover" | "pintar" | "balde" | "apagar" | MarkerType | LineType;
+type Data = { cellSize?: number; nations: Nation[]; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; regions: Region[]; showRegions: boolean; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
+type Tool = "mover" | "pintar" | "balde" | "apagar" | "comentario" | "regiao" | MarkerType | LineType;
 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
 const KEY = "atlas-nacoes-v1";
 const uid = () => Math.random().toString(36).slice(2, 9);
-const empty: Data = { cellSize: MAP_CELL, nations: [], tiles: {}, markers: [], lines: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
+const empty: Data = { cellSize: MAP_CELL, nations: [], tiles: {}, markers: [], lines: [], comments: [], regions: [], showRegions: true, bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
 const RELS: Relation[] = ["propria", "aliada", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
-const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "capital", "cidade", "forte", "porto", "estrada", "rota"];
+const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "comentario", "regiao", "capital", "cidade", "forte", "porto", "estrada", "rota"];
 
 type Sel = { kind: "nation"; id: string } | { kind: "marker"; id: string } | { kind: "line"; id: string } | null;
 
@@ -47,6 +50,10 @@ export default function MapApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [flagUrl, setFlagUrl] = useState("");
   const [markerPhotoUrl, setMarkerPhotoUrl] = useState("");
+  const [mapName, setMapName] = useState("Meu mundo");
+  const [mapDescription, setMapDescription] = useState("");
+  const [versions, setVersions] = useState<MapVersion[]>([]);
+  const [selectedRegionId, setSelectedRegionId] = useState("");
 
   const historyRef = useRef<Data[]>([]);
   const historyIndexRef = useRef(-1);
@@ -102,7 +109,11 @@ export default function MapApp() {
   useEffect(() => {
     try {
       const s = localStorage.getItem(KEY);
-      const initial = s ? readMap(JSON.parse(s)) : empty;
+      const stored = s ? JSON.parse(s) as Record<string, unknown> : null;
+      const initial = stored ? readMap(stored["map"] ?? stored) : empty;
+      if (stored && Array.isArray(stored["versions"])) setVersions(stored["versions"] as MapVersion[]);
+      if (stored && typeof stored["mapName"] === "string") setMapName(stored["mapName"]);
+      if (stored && typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]);
       setData(initial);
       historyRef.current = [initial];
       historyIndexRef.current = 0;
@@ -133,7 +144,7 @@ export default function MapApp() {
     pushHistory(data);
   }, [data, loaded]);
 
-  useEffect(() => { if (loaded) try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { setNotice(t.storageFull); } }, [data, loaded]);
+  useEffect(() => { if (loaded) try { localStorage.setItem(KEY, JSON.stringify({ map: data, mapName, mapDescription, versions })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -228,7 +239,14 @@ export default function MapApp() {
       return;
     }
     const [wx, wy] = toWorld(e.clientX, e.clientY);
-    if (tool === "pintar" || tool === "apagar") {
+    if (tool === "comentario") {
+      const text = window.prompt(lang === "pt" ? "Texto do comentário:" : lang === "es" ? "Texto del comentario:" : "Comment text:");
+      if (text?.trim()) setData(d => ({ ...d, comments: [...d.comments, { id: uid(), x: wx, y: wy, text: text.trim(), createdAt: new Date().toISOString() }] }));
+    } else if (tool === "regiao") {
+      const c = cellAt(e.clientX, e.clientY);
+      if (!selectedRegionId) { setNotice(lang === "pt" ? "Crie ou selecione uma região no painel." : "Select a region first."); return; }
+      if (c) { const key = `${c[0]},${c[1]}`; setData(d => { const region = d.regions.find(q => q.id === selectedRegionId); if (!region || d.tiles[key] !== region.nationId) { setNotice(lang === "pt" ? "A célula precisa pertencer à nação desta região." : "Cell must belong to the region nation."); return d; } return { ...d, regions: d.regions.map(q => q.id === selectedRegionId ? { ...q, cells: q.cells.includes(key) ? q.cells : [...q.cells, key] } : { ...q, cells: q.cells.filter(cell => cell !== key) }) }; }); }
+    } else if (tool === "pintar" || tool === "apagar") {
       if (tool === "pintar" && !brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
       drag.current = { mode: "paint", sx: 0, sy: 0, vx: 0, vy: 0 }; paint(e.clientX, e.clientY);
     } else if (tool === "balde") {
@@ -263,7 +281,13 @@ export default function MapApp() {
     const n: Nation = { id: uid(), name: t.newNationName, color: `hsl(${Math.floor(Math.random() * 360)} 55% 50%)`, relation: data.nations.length ? "neutra" : "propria", ruler: "", treaties: "", notes: "" };
     setData(d => ({ ...d, nations: [...d.nations, n] })); setBrush(n.id); setSel({ kind: "nation", id: n.id }); setTool("pintar"); setNotice("");
   };
-  const upNation = (id: string, p: Partial<Nation>) => setData(d => ({ ...d, nations: d.nations.map(n => n.id === id ? { ...n, ...p } : n) }));
+  const upNation = (id: string, p: Partial<Nation>) => setData(d => {
+    const current = d.nations.find(n => n.id === id); if (!current) return d;
+    const overlord = Object.prototype.hasOwnProperty.call(p, "overlordId") ? p.overlordId : current.overlordId;
+    if (overlord === id) { setNotice("Uma nação não pode ser vassala de si mesma."); return d; }
+    if (overlord) { let cursor: string | undefined = overlord; const seen = new Set<string>([id]); while (cursor) { if (seen.has(cursor)) { setNotice("Essa relação criaria um ciclo de vassalagem."); return d; } seen.add(cursor); cursor = d.nations.find(n => n.id === cursor)?.overlordId; } }
+    return { ...d, nations: d.nations.map(n => n.id === id ? { ...n, ...p, overlordId: overlord || undefined } : n) };
+  });
   const upMarker = (id: string, p: Partial<Marker>) => setData(d => ({ ...d, markers: d.markers.map(n => n.id === id ? { ...n, ...p } : n) }));
   const nationById = (id: string) => data.nations.find(n => n.id === id);
 
@@ -290,18 +314,27 @@ export default function MapApp() {
   const onBg = (f?: File) => onImage(f, bg => setData(d => ({ ...d, bg })));
 
   const exportJson = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ ...data, format: "atlas-nacoes", version: 2 }, null, 2)], { type: "application/json" }));
-    const a = document.createElement("a"); a.href = url;
-    a.download = `meu-mundo-${new Date().toISOString().slice(0, 10)}.json`; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setNotice(t.exported);
+    const name = window.prompt(lang === "pt" ? "Nome do mapa:" : "Map name:", mapName); if (name === null) return;
+    const description = window.prompt(lang === "pt" ? "Descrição / observações:" : "Description / notes:", mapDescription); if (description === null) return;
+    const requestedFile = window.prompt(lang === "pt" ? "Nome do arquivo (sem .json):" : "File name (without .json):", name || "meu-mundo"); if (requestedFile === null) return;
+    const now = new Date().toISOString(); const snapshot: MapVersion = { id: uid(), name: name.trim() || "Meu mundo", description: description.trim(), createdAt: now, data: JSON.parse(JSON.stringify(data)) as Data };
+    const nextVersions = [...versions, snapshot].slice(-30); setMapName(snapshot.name); setMapDescription(snapshot.description); setVersions(nextVersions);
+    const payload = { format: "worldforge-map", version: 3, metadata: { name: snapshot.name, description: snapshot.description, updatedAt: now }, map: data, versions: nextVersions };
+    const safe = (requestedFile.trim() || snapshot.name).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "meu-mundo";
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })); const a = document.createElement("a"); a.href = url; a.download = `${safe}.json`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setNotice(lang === "pt" ? "Mapa e histórico exportados em JSON." : "Map and history exported as JSON.");
   };
+  const restoreVersion = (version: MapVersion) => { if (!window.confirm(`Restaurar "${version.name}"?`)) return; setData(readMap(version.data)); setMapName(version.name); setMapDescription(version.description); setNotice("Versão restaurada."); };
   const importJson = async (f?: File) => {
     if (!f) return;
     try {
-      const next = readMap(JSON.parse(await f.text()));
+      const parsed = JSON.parse(await f.text()) as Record<string, unknown>;
+      const next = readMap(parsed["map"] ?? parsed);
       if (!confirm(t.confirmImport)) return;
-      setData(next); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap();
+      const meta = parsed["metadata"] as { name?: string; description?: string } | undefined;
+      setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
+      if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]);
+      setSel(null); setBrush(null); setDraft([]); setFilter("todas"); setSelectedRegionId(""); fitMap();
       setNotice(t.imported);
     } catch { setNotice(t.invalidFile); }
   };
@@ -327,7 +360,7 @@ export default function MapApp() {
           <div className="grid gap-1">
             {TOOLS.map(id => (
               <Button variant="ghost" key={id} onClick={() => { setTool(id); setDraft([]); if ((id === "pintar" || id === "balde") && !brush) { const first = visibleNations[0] ?? data.nations[0]; if (first) setBrush(first.id); else setNotice(t.createFirst); } }}
-                className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{t[id]}</Button>
+                className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{({ comentario: "Comentário fixado", regiao: "Editar regiões" } as Record<string, string>)[id] ?? t[id]}</Button>
             ))}
           </div>
           {(tool === "pintar" || tool === "apagar") && <div className="mt-3"><label htmlFor="brush-size" className="label">{t.brushSize} · {brushSize}</label><input id="brush-size" type="range" min={1} max={10} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
@@ -351,6 +384,12 @@ export default function MapApp() {
           </div>
         </section>
         <section>
+          <div className="mb-2 flex items-center justify-between"><h2 className="label !mb-0">Regiões</h2><Button size="sm" variant="outline" onClick={() => { const name = window.prompt("Nome da região:"); if (!name?.trim()) return; const owner = selNation ?? data.nations[0]; if (!owner) { setNotice("Crie uma nação antes de criar regiões."); return; } const region: Region = { id: uid(), name: name.trim(), nationId: owner.id, color: owner.color, cells: [] }; setData(d => ({ ...d, regions: [...d.regions, region] })); setSelectedRegionId(region.id); setTool("regiao"); }}><Plus className="h-3 w-3" />Nova região</Button></div>
+          <p className="mb-2 text-xs text-muted-foreground">Selecione uma região e clique nas células da nação para atribuí-las.</p>
+          <select className="field mb-2" value={selectedRegionId} onChange={e => setSelectedRegionId(e.target.value)}><option value="">Todas as regiões</option>{data.regions.map(q => <option key={q.id} value={q.id}>{q.name} — {nationById(q.nationId)?.name ?? "?"}</option>)}</select>
+          {data.regions.map(q => <div key={q.id} className="mb-1 flex items-center gap-1 text-xs"><span className="h-3 w-3 rounded-sm" style={{ background: q.color }} /><button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => { setSelectedRegionId(q.id); setTool("regiao"); }}>{q.name} ({q.cells.length})</button><button onClick={() => { const n = window.prompt("Novo nome:", q.name); if (n?.trim()) setData(d => ({ ...d, regions: d.regions.map(v => v.id === q.id ? { ...v, name: n.trim() } : v) })); }}>✎</button><button onClick={() => { if (confirm("Excluir região?")) { setData(d => ({ ...d, regions: d.regions.filter(v => v.id !== q.id) })); if (selectedRegionId === q.id) setSelectedRegionId(""); } }}>×</button></div>)}
+        </section>
+        <section>
           <h2 className="label">{t.bgMap}</h2>
           <input type="file" aria-label={t.bgImage} accept="image/*" onChange={e => onBg(e.target.files?.[0])} className="w-full text-xs" />
           {data.bg && <>
@@ -362,7 +401,8 @@ export default function MapApp() {
           </>}
         </section>
         <section className="mt-auto grid gap-1 text-sm">
-          <Button variant="outline" onClick={exportJson} className="rounded border border-border px-2 py-1 hover:bg-accent"><Download />{t.exportWorld}</Button>
+          <Button variant="outline" onClick={exportJson} className="rounded border border-border px-2 py-1 hover:bg-accent"><Download />Salvar mapa / versões</Button>
+          <Button variant="outline" onClick={() => { if (!versions.length) { alert("Nenhuma versão salva ainda. Salve o mapa para criar a primeira."); return; } const list = [...versions].reverse(); alert(list.map((v, i) => `${i + 1}. ${v.name} — ${new Date(v.createdAt).toLocaleString()}`).join("\n")); const choice = Number(prompt("Número da versão para restaurar (Cancelar para sair):")); if (Number.isInteger(choice) && choice >= 1 && choice <= list.length) restoreVersion(list[choice - 1]); }}><History className="h-4 w-4" />Histórico de versões</Button>
           <Button variant="outline" onClick={() => importRef.current?.click()}><Upload />{t.importWorld}</Button>
           <Button variant="ghost" onClick={() => { if (confirm(t.confirmClear)) { setData(empty); setSel(null); setBrush(null); setDraft([]); } }} className="text-xs text-destructive">{t.clearMap}</Button>
         </section>
@@ -380,6 +420,8 @@ export default function MapApp() {
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {territories.filter(t => filter === "todas" || t.nation.relation === filter).map(t => <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />)}
           {data.showGrid && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
+          {data.showRegions && data.regions.filter(q => !selectedRegionId || q.id === selectedRegionId).map(q => q.cells.map(key => { const [x, y] = key.split(",").map(Number); return <rect key={`${q.id}-${key}`} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill={q.color} fillOpacity={0.18} stroke={q.color} strokeWidth={0.7} pointerEvents="none" />; }))}
+          {data.comments.map(comment => <g key={comment.id} transform={`translate(${comment.x},${comment.y})`} style={{ cursor: "pointer" }} onPointerDown={e => { if (tool === "mover") { e.stopPropagation(); const next = prompt("Editar comentário (vazio exclui):", comment.text); if (next === null) return; if (!next.trim()) setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); else setData(d => ({ ...d, comments: d.comments.map(c => c.id === comment.id ? { ...c, text: next.trim() } : c) })); } }}><circle r={8} fill="#f59e0b" stroke="#78350f" strokeWidth={1.5} /><text textAnchor="middle" dy="0.32em" fontSize={10} fill="#111827">!</text><title>{comment.text}</title></g>)}
           {data.lines.map(l => (
             <polyline key={l.id} points={l.points.map(p => p.join(",")).join(" ")} fill="none"
               className={l.type === "estrada" ? "stroke-foreground" : "stroke-chart-3"} strokeWidth={selLine?.id === l.id ? 5 : 3}
@@ -467,6 +509,7 @@ export default function MapApp() {
               <div className="grid grid-cols-2 gap-1">{RELS.map(r => (
                 <Button variant="outline" size="sm" key={r} onClick={() => upNation(selNation.id, { relation: r })} className={`rounded border px-2 py-1 text-xs rel-${r} ${selNation.relation === r ? "border-current font-bold" : "border-border"}`}>{REL[r]}</Button>))}</div></div>
             <div><label className="label">{t.ruler}</label><input value={selNation.ruler} onChange={e => upNation(selNation.id, { ruler: e.target.value })} className="field" /></div>
+            <div><label className="label">Suserano / nação superior</label><select className="field" value={selNation.overlordId ?? ""} onChange={e => upNation(selNation.id, { overlordId: e.target.value || undefined })}><option value="">Nenhum (independente)</option>{data.nations.filter(n => n.id !== selNation.id).map(n => <option key={n.id} value={n.id}>{n.name}</option>)}</select><p className="mt-1 text-xs text-muted-foreground">Vassalos: {data.nations.filter(n => n.overlordId === selNation.id).map(n => n.name).join(", ") || "nenhum"}</p></div>
             <div><label className="label">{t.treaties}</label><textarea rows={4} value={selNation.treaties} onChange={e => upNation(selNation.id, { treaties: e.target.value })} className="field" /></div>
             <div><label className="label">{t.notes}</label><textarea rows={6} value={selNation.notes} onChange={e => upNation(selNation.id, { notes: e.target.value })} className="field" /></div>
             <Button onClick={() => { setBrush(selNation.id); setTool("pintar"); setSel(null); setPanelOpen(false); }} className="h-auto whitespace-normal rounded bg-primary px-2 py-2 text-sm text-primary-foreground">{t.paintThis}</Button>
@@ -564,7 +607,7 @@ function readMap(input: unknown): Data {
   const factor = Math.max(1, Math.round(oldCell / CELL));
   const nations: Nation[] = d["nations"].map((n: Nation) => {
     if (!n || typeof n.id !== "string" || !n.id || typeof n.name !== "string" || !RELS.includes(n.relation)) throw new Error("Invalid nation");
-    return { id: n.id, name: n.name, color: /^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color) ? n.color : "#888888", relation: n.relation, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: flagImage(n.flag) };
+    return { id: n.id, name: n.name, color: /^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color) ? n.color : "#888888", relation: n.relation, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: flagImage(n.flag), overlordId: typeof n.overlordId === "string" && n.overlordId !== n.id ? n.overlordId : undefined };
   });
   if (new Set(nations.map(n => n.id)).size !== nations.length) throw new Error("Duplicate nation");
   const ids = new Set(nations.map(n => n.id));
@@ -595,7 +638,11 @@ function readMap(input: unknown): Data {
     if (!l || typeof l.id !== "string" || !["estrada", "rota"].includes(l.type) || !Array.isArray(l.points) || l.points.some(p => !Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite))) throw new Error("Invalid line");
     return { id: l.id, type: l.type, points: l.points };
   });
-  return { ...empty, cellSize: CELL, nations, tiles, markers, lines, bg: image(d["bg"]) ?? null,
+  const comments: MapComment[] = Array.isArray(d["comments"]) ? (d["comments"] as MapComment[]).filter(c => c && typeof c.id === "string" && Number.isFinite(c.x) && Number.isFinite(c.y) && typeof c.text === "string").map(c => ({ id: c.id, x: c.x, y: c.y, text: c.text, createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date().toISOString() })) : [];
+  const regions: Region[] = Array.isArray(d["regions"]) ? (d["regions"] as Region[]).filter(q => q && typeof q.id === "string" && typeof q.name === "string" && ids.has(q.nationId) && Array.isArray(q.cells)).map(q => ({ id: q.id, name: q.name, nationId: q.nationId, color: typeof q.color === "string" ? q.color : nations.find(n => n.id === q.nationId)?.color ?? "#888888", cells: [...new Set(q.cells.filter((cell: unknown) => typeof cell === "string" && /^\d+,\d+$/.test(cell) && !!tiles[cell] && tiles[cell] === q.nationId))] })) : [];
+  const validNationIds = new Set(nations.map(n => n.id)); for (const nation of nations) if (nation.overlordId && !validNationIds.has(nation.overlordId)) nation.overlordId = undefined;
+  for (const nation of nations) { let cursor = nation.overlordId; const seen = new Set([nation.id]); while (cursor) { if (seen.has(cursor)) { nation.overlordId = undefined; break; } seen.add(cursor); cursor = nations.find(n => n.id === cursor)?.overlordId; } }
+  return { ...empty, cellSize: CELL, nations, tiles, markers, lines, comments, regions, showRegions: typeof d["showRegions"] === "boolean" ? d["showRegions"] : true, bg: image(d["bg"]) ?? null,
     bgOpacity: finite(d["bgOpacity"], 0.6, 0, 1), bgFit: d["bgFit"] === "cover" || d["bgFit"] === "stretch" ? d["bgFit"] : "contain",
     bgScale: finite(d["bgScale"], 1, 0.2, 3), bgX: finite(d["bgX"], 0, -W, W), bgY: finite(d["bgY"], 0, -H, H), bgRotation: finite(d["bgRotation"], 0, -180, 180),
     smooth: typeof d["smooth"] === "boolean" ? d["smooth"] : true, showGrid: typeof d["showGrid"] === "boolean" ? d["showGrid"] : true };
