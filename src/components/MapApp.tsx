@@ -617,7 +617,7 @@ export default function MapApp() {
           <h3 className="font-semibold">{tx("Relações e governo","Relations and government","Relaciones y gobierno")}</h3>
           {data.nations.length ? data.nations.map(n => <button key={n.id} onClick={() => setSel({kind:"nation",id:n.id})} className={`rounded-lg border p-3 text-left ${selNation?.id === n.id ? "border-primary bg-accent/50" : "border-current/15 hover:bg-accent/30"}`}>
             <div className="flex items-center gap-2">{n.flag ? <img src={n.flag} alt={tx("Bandeira de","Flag of","Bandera de")+" "+n.name} className="h-7 w-10 shrink-0 rounded border object-contain" /> : <span className="h-4 w-4 shrink-0 rounded-sm" style={{background:n.color}}/>}<strong className="min-w-0 flex-1 truncate">{n.name}</strong></div>
-            <p className="mt-2 text-xs">{t.relation}: <span className={`rel-${n.relation}`}>{REL[n.relation]}</span></p>
+            <p className="mt-2 text-xs">{t.relation}: <span className={`rel-${relationToPlayer(n)}`}>{REL[relationToPlayer(n)]}</span></p>
             {n.ruler && <p className="mt-1 text-sm">{tx("Governante:","Ruler:","Gobernante:")} {n.ruler}</p>}
             {n.overlordId && <p className="mt-1 text-sm">{tx("Suserano:","Overlord:","Señor:")} {nationById(n.overlordId)?.name ?? "—"}</p>}
             {n.treaties && <p className="mt-2 whitespace-pre-wrap text-sm">{n.treaties}</p>}
@@ -644,7 +644,7 @@ export default function MapApp() {
           <div className="rounded-lg border border-current/15 p-2"><h4 className="mb-2 text-sm font-semibold">{tx("Nações","Nations","Naciones")}</h4>{data.nations.map(n=><label key={n.id} className="flex items-center gap-2 py-1 text-sm"><input type="checkbox" checked={compareNations.includes(n.id)} onChange={e=>setCompareNations(cur=>e.target.checked?[...cur,n.id]:cur.filter(id=>id!==n.id))}/>{n.flag&&<img src={n.flag} alt="" className="h-4 w-6 object-contain"/>}<span>{n.name}</span></label>)}</div>
           <div className="rounded-lg border border-current/15 p-2"><h4 className="mb-2 text-sm font-semibold">{tx("Localidades","Locations","Localidades")}</h4>{data.markers.map(m=><label key={m.id} className="flex items-center gap-2 py-1 text-sm"><input type="checkbox" checked={compareMarkers.includes(m.id)} onChange={e=>setCompareMarkers(cur=>e.target.checked?[...cur,m.id]:cur.filter(id=>id!==m.id))}/><span>{m.name}</span></label>)}</div>
           {(compareNations.length+compareMarkers.length)>0 && <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-current/20"><th className="p-2">{tx("Elemento","Item","Elemento")}</th><th className="p-2">{tx("Tipo","Type","Tipo")}</th><th className="p-2">{tx("Dados","Data","Datos")}</th></tr></thead><tbody>
-            {data.nations.filter(n=>compareNations.includes(n.id)).map(n=><tr key={n.id} className="border-b border-current/10"><td className="p-2">{n.name}</td><td className="p-2">{tx("Nação","Nation","Nación")}</td><td className="p-2">{REL[n.relation]} · {tileCount(n.id)} {tx("territórios","territories","territorios")} · {n.ruler||"—"}</td></tr>)}
+            {data.nations.filter(n=>compareNations.includes(n.id)).map(n=><tr key={n.id} className="border-b border-current/10"><td className="p-2">{n.name}</td><td className="p-2">{tx("Nação","Nation","Nación")}</td><td className="p-2">{REL[relationToPlayer(n)]} · {tileCount(n.id)} {tx("territórios","territories","territorios")} · {n.ruler||"—"}</td></tr>)}
             {data.markers.filter(m=>compareMarkers.includes(m.id)).map(m=><tr key={m.id} className="border-b border-current/10"><td className="p-2">{m.name}</td><td className="p-2">{t[`m_${m.type}`]}</td><td className="p-2">{tx("População:","Population:","Población:")} {m.npcs??0} · {tx("Receita:","Income:","Ingresos:")} {m.grossIncome??0} · {tx("Gastos:","Expenses:","Gastos:")} {m.expenses??0} · {tx("Saldo alimentar:","Food balance:","Balance alimentario:")} {(m.foodProduction??0)-(m.foodConsumption??0)}</td></tr>)}
           </tbody></table></div>}
         </section>}
@@ -963,8 +963,10 @@ function readMap(input: unknown): Data {
   const oldCell = typeof d["cellSize"] === "number" && Number.isFinite(d["cellSize"]) ? Math.max(CELL, Math.min(40, d["cellSize"])) : 20;
   const factor = Math.max(1, Math.min(20, Math.round(oldCell / CELL)));
   const nations: Nation[] = d["nations"].map((n: Nation) => {
-    const relation = (n as Nation).relation === ("aliada" as Relation) ? "amigavel" : (n as Nation).relation;
-    if (!n || typeof n.id !== "string" || !n.id || typeof n.name !== "string" || !RELS.includes(relation)) throw new Error("Invalid nation");
+    if (!n || typeof n !== "object") throw new Error("Invalid nation");
+    const rawRelation = n.relation as Relation | "aliada";
+    const relation: Relation = rawRelation === "aliada" ? "amigavel" : rawRelation;
+    if (typeof n.id !== "string" || !n.id || typeof n.name !== "string" || !RELS.includes(relation)) throw new Error("Invalid nation");
     const relations = n.relations && typeof n.relations === "object" ? Object.fromEntries(Object.entries(n.relations).filter(([id, value]) => typeof id === "string" && RELS.includes(value as Relation)).map(([id, value]) => [id, value as Relation])) : undefined;
     return { id: n.id, name: n.name, color: typeof n.color === "string" && (/^#[0-9a-f]{6}$/i.test(n.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(n.color)) ? n.color : "#888888", relation, relations, ruler: text(n.ruler), treaties: text(n.treaties), notes: text(n.notes), flag: flagImage(n.flag), overlordId: typeof n.overlordId === "string" && n.overlordId !== n.id ? n.overlordId : undefined, enemyIds: Array.isArray(n.enemyIds) ? n.enemyIds.filter((id): id is string => typeof id === "string" && id !== n.id) : [] };
   });
