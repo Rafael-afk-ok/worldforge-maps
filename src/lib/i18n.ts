@@ -7,7 +7,7 @@ export const LANGS: { id: Lang; label: string }[] = [
 
 const pt = {
   appName: "Frontiers Map Simulator",
-  tools: "Ferramentas", close: "Fechar", mover: "✋ Mover / Selecionar", pintar: "🖌 Pintar território", balde: "🪣 Preencher área", apagar: "🧽 Apagar", regiao: "▧ Delimitar estado/região",
+  tools: "Ferramentas", close: "Fechar", mover: "✋ Mover / Selecionar", pintar: "🖌 Pintar território", balde: "🪣 Preencher área", apagar: "🧽 Apagar",
   capital: "★ Capital", cidade: "● Cidade", forte: "▲ Forte", porto: "⚓ Porto", estrada: "━ Estrada", rota: "┅ Rota marítima",
   brushSize: "Tamanho do pincel", smooth: "Bordas suaves", grid: "Grade", finishLine: "Concluir traçado",
   nations: "Nações", newNation: "+ Nova", filter: "Filtrar relações", allNations: "Todas as nações", noNations: "Nenhuma nação.",
@@ -34,7 +34,7 @@ export type Dict = typeof pt;
 
 const en: Dict = {
   appName: "Frontiers Map Simulator",
-  tools: "Tools", close: "Close", mover: "✋ Move / Select", pintar: "🖌 Paint territory", balde: "🪣 Fill area", apagar: "🧽 Erase", regiao: "▧ Delimit state/region",
+  tools: "Tools", close: "Close", mover: "✋ Move / Select", pintar: "🖌 Paint territory", balde: "🪣 Fill area", apagar: "🧽 Erase",
   capital: "★ Capital", cidade: "● City", forte: "▲ Fort", porto: "⚓ Port", estrada: "━ Road", rota: "┅ Sea route",
   brushSize: "Brush size", smooth: "Smooth borders", grid: "Grid", finishLine: "Finish path",
   nations: "Nations", newNation: "+ New", filter: "Filter relations", allNations: "All nations", noNations: "No nations.",
@@ -60,7 +60,7 @@ const en: Dict = {
 
 const es: Dict = {
   appName: "Frontiers Map Simulator",
-  tools: "Herramientas", close: "Cerrar", mover: "✋ Mover / Seleccionar", pintar: "🖌 Pintar territorio", balde: "🪣 Rellenar área", apagar: "🧽 Borrar", regiao: "▧ Delimitar estado/región",
+  tools: "Herramientas", close: "Cerrar", mover: "✋ Mover / Seleccionar", pintar: "🖌 Pintar territorio", balde: "🪣 Rellenar área", apagar: "🧽 Borrar",
   capital: "★ Capital", cidade: "● Ciudad", forte: "▲ Fuerte", porto: "⚓ Puerto", estrada: "━ Camino", rota: "┅ Ruta marítima",
   brushSize: "Tamaño del pincel", smooth: "Bordes suaves", grid: "Cuadrícula", finishLine: "Terminar trazado",
   nations: "Naciones", newNation: "+ Nueva", filter: "Filtrar relaciones", allNations: "Todas las naciones", noNations: "Ninguna nación.",
