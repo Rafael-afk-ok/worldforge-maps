@@ -447,7 +447,7 @@ export default function MapApp() {
         ctx.fillRect(ox + x * CELL * sx, oy + y * CELL * sy, CELL * sx + 0.4, CELL * sy + 0.4);
       }
       if (showRegions) {
-        const regionById = new Map((data.regions ?? []).map(region => [region.id, region]));
+        const regionById = new Map<string, Region>((data.regions ?? []).map(region => [region.id, region] as const));
         const assignments = data.regionTiles ?? {};
         for (const [key, regionId] of Object.entries(assignments)) {
           const region = regionById.get(regionId);
