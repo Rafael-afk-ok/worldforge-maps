@@ -6,7 +6,6 @@ import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
 type Relation = "propria" | "amigavel" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; relations?: Record<string, Relation> | undefined; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
-type Region = { id: string; name: string; nationId: string; color: string };
 type Alliance = { id: string; name: string; nationIds: string[]; color: string; image?: string | undefined };
 type War = { id: string; name: string; attackers: string[]; defenders: string[]; active: boolean; startedAt: string; endedAt?: string | undefined };
 type MapComment = { id: string; x: number; y: number; text: string; createdAt: string; size?: number; fontFamily?: string; color?: string | undefined; rotation?: number };
@@ -35,18 +34,18 @@ type Marker = {
 };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
-type Data = { cellSize?: number; nations: Nation[]; regions?: Region[]; regionTiles?: Record<string, string>; playerNationId?: string | undefined; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; alliances?: Alliance[]; wars?: War[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
+type Data = { cellSize?: number; nations: Nation[]; playerNationId?: string | undefined; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; alliances?: Alliance[]; wars?: War[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
 type AppDialog = { type: "text"; title: string; value: string; onSubmit: (value: string) => void } | { type: "confirm"; title: string; message: string; onSubmit: () => void } | { type: "save"; name: string; description: string; filename: string } | { type: "history"; selectedId: string } | { type: "status" } | { type: "compare" } | { type: "diplomacy" } | { type: "tutorial" };
-type Tool = "mover" | "pintar" | "balde" | "apagar" | "regiao" | "comentario" | MarkerType | LineType;
+type Tool = "mover" | "pintar" | "balde" | "apagar" | "comentario" | MarkerType | LineType;
 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
 const KEY = "atlas-nacoes-v1";
 const uid = () => Math.random().toString(36).slice(2, 9);
-const empty: Data = { cellSize: MAP_CELL, nations: [], regions: [], regionTiles: {}, playerNationId: undefined, tiles: {}, markers: [], lines: [], comments: [], alliances: [], wars: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
+const empty: Data = { cellSize: MAP_CELL, nations: [], playerNationId: undefined, tiles: {}, markers: [], lines: [], comments: [], alliances: [], wars: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
 const RELS: Relation[] = ["propria", "amigavel", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
 const SHAPES: { id: MarkerShape; label: string }[] = [{ id: "circle", label: "Círculo" }, { id: "square", label: "Quadrado" }, { id: "triangle", label: "Triângulo" }, { id: "star", label: "Estrela" }, { id: "diamond", label: "Losango" }, { id: "hexagon", label: "Hexágono" }, { id: "cross", label: "Cruz" }];
-const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "regiao", "comentario", "capital", "cidade", "forte", "porto", "estrada", "rota"];
+const TOOLS: Tool[] = ["mover", "pintar", "balde", "apagar", "comentario", "capital", "cidade", "forte", "porto", "estrada", "rota"];
 type HomeTheme = "atlas" | "midnight" | "parchment" | "ocean" | "forest";
 const HOME_THEMES: { id: HomeTheme; label: string; background: string; panel: string; foreground: string; muted: string; accent: string; card: string }[] = [
   { id: "atlas", label: "Atlas", background: "bg-background", panel: "bg-card border-border", foreground: "text-foreground", muted: "text-muted-foreground", accent: "text-primary", card: "border-border hover:bg-accent" },
@@ -67,10 +66,6 @@ export default function MapApp() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [brushSize, setBrushSize] = useState(2);
   const [filter, setFilter] = useState<"todas" | "propria" | "amigavel" | "neutra" | "inimigas" | "alianças" | "guerras">("todas");
-  const [showRegions, setShowRegions] = useState(false);
-  const [regionName, setRegionName] = useState("");
-  const [regionNationId, setRegionNationId] = useState("");
-  const [selectedRegionId, setSelectedRegionId] = useState("");
   const [allianceName, setAllianceName] = useState("");
   const [allianceMembers, setAllianceMembers] = useState<string[]>([]);
   const [allianceColor, setAllianceColor] = useState("#64748b");
@@ -253,22 +248,13 @@ export default function MapApp() {
     const cells = strokeCells(lastPaint.current ?? current, current, brushSize - 1);
     lastPaint.current = current;
     setData(d => {
-      if (tool === "regiao") {
-        const region = (d.regions ?? []).find(item => item.id === selectedRegionId);
-        if (!region) return d;
-        const regionTiles = { ...(d.regionTiles ?? {}) };
-        for (const cell of cells) if (d.tiles[cell] === region.nationId) regionTiles[cell] = region.id;
-        return { ...d, regionTiles };
-      }
       const tiles = { ...d.tiles };
-      const regionTiles = { ...(d.regionTiles ?? {}) };
       for (const cell of cells) {
-        if (tool === "apagar") { delete tiles[cell]; delete regionTiles[cell]; }
-        else if (brush) { tiles[cell] = brush; const assignedRegion = (d.regions ?? []).find(region => region.id === regionTiles[cell]); if (assignedRegion && assignedRegion.nationId !== brush) delete regionTiles[cell]; }
+        if (tool === "apagar") delete tiles[cell]; else if (brush) tiles[cell] = brush;
       }
-      return { ...d, tiles, regionTiles };
+      return { ...d, tiles };
     });
-  }, [tool, brush, view, brushSize, selectedRegionId]);
+  }, [tool, brush, view, brushSize]);
 
   const stopDrag = () => {
     const finished = drag.current;
@@ -346,9 +332,8 @@ export default function MapApp() {
     const [wx, wy] = toWorld(e.clientX, e.clientY);
     if (tool === "comentario") {
       setDialog({ type: "text", title: tx("Texto sobre o mapa", "Text on map", "Texto en el mapa"), value: "", onSubmit: value => { if (value.trim()) setData(d => ({ ...d, comments: [...d.comments, { id: uid(), x: wx, y: wy, text: value.trim(), createdAt: new Date().toISOString(), size: 18, fontFamily: "Arial", rotation: 0 }] })); } });
-    } else if (tool === "pintar" || tool === "apagar" || tool === "regiao") {
+    } else if (tool === "pintar" || tool === "apagar") {
       if (tool === "pintar" && !brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
-      if (tool === "regiao" && !(data.regions ?? []).some(region => region.id === selectedRegionId)) { setPanelOpen(true); setNotice(tx("Crie ou selecione uma região primeiro.", "Create or select a region first.", "Crea o selecciona una región primero.")); return; }
       drag.current = { mode: "paint", sx: 0, sy: 0, vx: 0, vy: 0 }; paint(e.clientX, e.clientY);
     } else if (tool === "balde") {
       if (!brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
@@ -392,7 +377,7 @@ export default function MapApp() {
 
   const addNation = () => {
     const n: Nation = { id: uid(), name: t.newNationName, color: `hsl(${Math.floor(Math.random() * 360)} 55% 50%)`, relation: data.nations.length ? "neutra" : "propria", ruler: "", treaties: "", notes: "" };
-    setData(d => ({ ...d, nations: [...d.nations, n] })); setBrush(n.id); setRegionNationId(n.id); setSel({ kind: "nation", id: n.id }); setTool("pintar"); setNotice("");
+    setData(d => ({ ...d, nations: [...d.nations, n] })); setBrush(n.id); setSel({ kind: "nation", id: n.id }); setTool("pintar"); setNotice("");
   };
   const upNation = (id: string, p: Partial<Nation>) => {
     const current = data.nations.find(n => n.id === id); if (!current) return;
@@ -445,21 +430,6 @@ export default function MapApp() {
         if (!nation) continue;
         ctx.fillStyle = nation.color.startsWith("hsl") ? toHex(nation.color) : nation.color;
         ctx.fillRect(ox + x * CELL * sx, oy + y * CELL * sy, CELL * sx + 0.4, CELL * sy + 0.4);
-      }
-      if (showRegions) {
-        const regionById = new Map<string, Region>((data.regions ?? []).map(region => [region.id, region] as const));
-        const assignments = data.regionTiles ?? {};
-        for (const [key, regionId] of Object.entries(assignments)) {
-          const region = regionById.get(regionId);
-          if (!region || data.tiles[key] !== region.nationId) continue;
-          const [x = 0, y = 0] = key.split(",").map(Number);
-          ctx.strokeStyle = toHex(region.color); ctx.lineWidth = Math.max(1, 2 * Math.min(sx, sy)); ctx.beginPath();
-          if (assignments[x + "," + (y - 1)] !== regionId) { ctx.moveTo(ox + x * CELL * sx, oy + y * CELL * sy); ctx.lineTo(ox + (x + 1) * CELL * sx, oy + y * CELL * sy); }
-          if (assignments[(x + 1) + "," + y] !== regionId) { ctx.moveTo(ox + (x + 1) * CELL * sx, oy + y * CELL * sy); ctx.lineTo(ox + (x + 1) * CELL * sx, oy + (y + 1) * CELL * sy); }
-          if (assignments[x + "," + (y + 1)] !== regionId) { ctx.moveTo(ox + x * CELL * sx, oy + (y + 1) * CELL * sy); ctx.lineTo(ox + (x + 1) * CELL * sx, oy + (y + 1) * CELL * sy); }
-          if (assignments[(x - 1) + "," + y] !== regionId) { ctx.moveTo(ox + x * CELL * sx, oy + y * CELL * sy); ctx.lineTo(ox + x * CELL * sx, oy + (y + 1) * CELL * sy); }
-          ctx.stroke();
-        }
       }
       if (data.showGrid) {
         ctx.strokeStyle = "rgba(15,23,42,.12)"; ctx.lineWidth = 0.5;
@@ -558,14 +528,6 @@ export default function MapApp() {
   const selLine = sel?.kind === "line" ? data.lines.find(m => m.id === sel.id) : undefined;
   const selComment = sel?.kind === "comment" ? data.comments.find(c => c.id === sel.id) : undefined;
   const tileCount = (id: string) => Object.values(data.tiles).filter(t => t === id).length;
-  const regionTileCount = (id: string) => Object.values(data.regionTiles ?? {}).filter(regionId => regionId === id).length;
-  const createRegion = () => {
-    const nation = data.nations.find(item => item.id === regionNationId);
-    if (!nation || !regionName.trim()) return;
-    const region: Region = { id: uid(), name: regionName.trim(), nationId: nation.id, color: `hsl(${Math.floor(Math.random() * 360)} 65% 45%)` };
-    setData(d => ({ ...d, regions: [...(d.regions ?? []), region] }));
-    setSelectedRegionId(region.id); setRegionName(""); setShowRegions(true); setTool("regiao"); setNotice(tx("Região criada. Pinte as células pertencentes ao país escolhido.", "Region created. Paint cells belonging to the selected nation.", "Región creada. Pinta las celdas pertenecientes al país seleccionado."));
-  };
   const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
   const worldBalance = worldStats.income - worldStats.expenses;
   const foodBalance = worldStats.foodProduction - worldStats.foodConsumption;
@@ -597,10 +559,6 @@ export default function MapApp() {
     if (filter === "inimigas") return relation === "inimiga" || (n.enemyIds ?? []).includes(referenceId) || data.nations.some(other => other.id === referenceId && (other.enemyIds ?? []).includes(n.id));
     return relation === filter;
   });
-  const regionTerritories = useMemo(() => (data.regions ?? []).map(region => {
-    const keys = Object.entries(data.regionTiles ?? {}).filter(([key, id]) => id === region.id && data.tiles[key] === region.nationId).map(([key]) => key);
-    return { region, keys, path: territoryPath(keys, data.smooth) };
-  }), [data.regions, data.regionTiles, data.tiles, data.smooth]);
   const territories = useMemo(() => data.nations.map(n => {
     const keys = Object.entries(data.tiles).filter(([, id]) => id === n.id).map(([key]) => key);
     return { nation: n, keys, path: territoryPath(keys, data.smooth) };
@@ -677,8 +635,7 @@ export default function MapApp() {
             <option value="alianças">{tx("Alianças formais", "Formal alliances", "Alianzas formales")}</option>
             <option value="guerras">{tx("Guerras ativas", "Active wars", "Guerras activas")}</option>
           </select>
-          <label className="flex items-center gap-2 rounded border border-current/10 p-2 text-sm"><input type="checkbox" checked={showRegions} onChange={e => setShowRegions(e.target.checked)} />{tx("Mostrar estados e regiões", "Show states and regions", "Mostrar estados y regiones")}</label>
-           {viewerVisibleNations.length ? viewerVisibleNations.map(n => <button key={n.id} onClick={() => { setSel({kind:"nation",id:n.id}); setViewerReferenceNationId(n.id); }} className={`rounded-lg border p-3 text-left ${selNation?.id === n.id ? "border-primary bg-accent/50" : "border-current/15 hover:bg-accent/30"}`}>
+          {viewerVisibleNations.length ? viewerVisibleNations.map(n => <button key={n.id} onClick={() => { setSel({kind:"nation",id:n.id}); setViewerReferenceNationId(n.id); }} className={`rounded-lg border p-3 text-left ${selNation?.id === n.id ? "border-primary bg-accent/50" : "border-current/15 hover:bg-accent/30"}`}>
             <div className="flex items-center gap-2">{n.flag ? <img src={n.flag} alt={tx("Bandeira de","Flag of","Bandera de")+" "+n.name} className="h-7 w-10 shrink-0 rounded border object-contain" /> : <span className="h-4 w-4 shrink-0 rounded-sm" style={{background:n.color}}/>}<strong className="min-w-0 flex-1 truncate">{n.name}</strong></div>
             <p className="mt-2 text-xs">{t.relation}: <span className={`rel-${relationToPlayer(n)}`}>{REL[relationToViewerReference(n)]}</span></p>
             {n.ruler && <p className="mt-1 text-sm">{tx("Governante:","Ruler:","Gobernante:")} {n.ruler}</p>}
@@ -732,18 +689,15 @@ export default function MapApp() {
                 className={`justify-start rounded px-2 py-1 text-left text-sm transition ${tool === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>{id === "comentario" ? tx("Texto no mapa", "Map text", "Texto en el mapa") : (t as Record<string, string>)[id]}</Button>
             ))}
           </div>
-          {(tool === "pintar" || tool === "apagar" || tool === "regiao") && <div className="mt-3"><label htmlFor="brush-size" className="label">{t.brushSize} · {brushSize}</label><input id="brush-size" type="range" min={1} max={10} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
+          {(tool === "pintar" || tool === "apagar") && <div className="mt-3"><label htmlFor="brush-size" className="label">{t.brushSize} · {brushSize}</label><input id="brush-size" type="range" min={1} max={10} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
           <div className="mt-3 grid gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.smooth} onChange={e => setData(d => ({ ...d, smooth: e.target.checked }))} />{t.smooth}</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.showGrid} onChange={e => setData(d => ({ ...d, showGrid: e.target.checked }))} />{t.grid}</label></div>
           <div className="mt-3 rounded-md border border-border p-2"><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><Layers className="h-4 w-4" />{tx("Camadas visíveis", "Visible layers", "Capas visibles")}</h3>{([{ key: "background", label: tx("Mapa de fundo", "Background map", "Mapa de fondo") }, { key: "territories", label: tx("Territórios", "Territories", "Territorios") }, { key: "labels", label: tx("Nomes e bandeiras", "Names and flags", "Nombres y banderas") }, { key: "markers", label: tx("Cidades e símbolos", "Cities and symbols", "Ciudades y símbolos") }, { key: "routes", label: tx("Estradas e rotas", "Roads and routes", "Caminos y rutas") }, { key: "comments", label: tx("Textos no mapa", "Map text", "Textos en el mapa") }, { key: "grid", label: tx("Grade", "Grid", "Cuadrícula") }] as const).map(layer => <label key={layer.key} className="flex items-center gap-2 py-1 text-sm"><input type="checkbox" checked={layers[layer.key]} onChange={e => setLayers(current => ({ ...current, [layer.key]: e.target.checked }))} />{layer.label}</label>)}</div>
           {(tool === "estrada" || tool === "rota") && <Button variant="outline" size="sm" className="mt-2 w-full" disabled={draft.length < 2} onClick={finishLine}>{t.finishLine}</Button>}
-          {(tool === "pintar" || tool === "balde") && (brush && nationById(brush) ? <p className="mt-2 text-sm">{t.paintingWith}: <span style={{ color: nationById(brush)?.color }}>■</span> {nationById(brush)?.name}</p> : <div className="mt-2 grid gap-1"><p className="text-sm text-destructive">{data.nations.length ? t.pickNation : t.createFirst}</p>{!data.nations.length && <Button size="sm" onClick={addNation}>{t.createNation}</Button></div>)}
-          {tool === "regiao" && <p className="mt-2 text-sm">{tx("Delimitando região:", "Delimiting region:", "Delimitando región:")} <strong>{(data.regions ?? []).find(region => region.id === selectedRegionId)?.name ?? tx("Nenhuma selecionada", "None selected", "Ninguna seleccionada")}</strong></p>}
+          {(tool === "pintar" || tool === "balde") && (brush && nationById(brush) ? <p className="mt-2 text-sm">{t.paintingWith}: <span style={{ color: nationById(brush)?.color }}>■</span> {nationById(brush)?.name}</p> : <div className="mt-2 grid gap-1"><p className="text-sm text-destructive">{data.nations.length ? t.pickNation : t.createFirst}</p>{!data.nations.length && <Button size="sm" onClick={addNation}>{t.createNation}</Button>}</div>)}
         </section></details>
         <details open className="rounded-md border border-border p-2"><summary className="cursor-pointer select-none font-semibold">{t.nations}</summary><section className="mt-3">
           <div className="mb-1 flex items-center justify-between"><h2 className="label !mb-0">{t.nations}</h2><Button variant="ghost" size="sm" onClick={addNation} className="text-sm text-primary hover:underline">{t.newNation}</Button></div>
           <label htmlFor="player-nation" className="label">{tx("Meu país / referência diplomática", "My nation / diplomatic reference", "Mi país / referencia diplomática")}</label><select id="player-nation" className="field mb-2" value={data.playerNationId ?? ""} onChange={e => { setData(d => ({ ...d, playerNationId: e.target.value || undefined })); setFilter("todas"); }}><option value="">{tx("Selecionar país de referência", "Select reference nation", "Seleccionar país de referencia")}</option>{data.nations.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}</select><label htmlFor="relation-filter" className="label">{t.filter}</label><select id="relation-filter" aria-label={t.filter} className="field mb-2" value={filter} onChange={e => setFilter(e.target.value as typeof filter)}><option value="todas">{tx("Universal — todas as nações", "All — all nations", "Universal — todas las naciones")}</option><option value="propria">{tx("Meu país", "My nation", "Mi país")}</option><option value="amigavel">{tx("Amigáveis", "Friendly", "Amistosas")}</option><option value="neutra">{tx("Neutras", "Neutral", "Neutrales")}</option><option value="inimigas">{tx("Inimigas", "Enemies", "Enemigas")}</option><option value="alianças">{tx("Alianças formais", "Formal alliances", "Alianzas formales")}</option><option value="guerras">{tx("Guerras ativas", "Active wars", "Guerras activas")}</option></select>
-          <div className="mt-2 rounded-md border border-border p-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={showRegions} onChange={e => setShowRegions(e.target.checked)} />{tx("Mostrar estados e regiões", "Show states and regions", "Mostrar estados y regiones")}</label><p className="mt-1 text-xs text-muted-foreground">{tx("As divisões internas ficam ocultas até ativar este filtro.", "Internal divisions stay hidden until this filter is enabled.", "Las divisiones internas permanecen ocultas hasta activar este filtro.")}</p></div>
-          <div className="mt-3 grid gap-2 rounded-md border border-border p-2"><h3 className="text-sm font-semibold">{tx("Estados e regiões", "States and regions", "Estados y regiones")}</h3><label className="label">{tx("País proprietário", "Parent country", "País propietario")}<select className="field mt-1" value={regionNationId} onChange={e => setRegionNationId(e.target.value)}><option value="">{tx("Selecionar país", "Select country", "Seleccionar país")}</option>{data.nations.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}</select></label><input className="field" value={regionName} onChange={e => setRegionName(e.target.value)} placeholder={tx("Nome do estado/região", "State/region name", "Nombre del estado/región")} aria-label={tx("Nome do estado/região", "State/region name", "Nombre del estado/región")} /><Button size="sm" disabled={!regionNationId || !regionName.trim()} onClick={createRegion}>{tx("Criar região", "Create region", "Crear región")}</Button>{(data.regions ?? []).length > 0 && <div className="max-h-40 space-y-1 overflow-y-auto">{(data.regions ?? []).map(region => <div key={region.id} className={`flex items-center gap-2 rounded border p-2 ${selectedRegionId === region.id ? "border-primary bg-accent/30" : "border-current/10"}`}><button type="button" aria-label={tx("Selecionar região", "Select region", "Seleccionar región")} className="h-7 w-7 shrink-0 rounded border text-sm" onClick={() => { setSelectedRegionId(region.id); setRegionNationId(region.nationId); setTool("regiao"); setShowRegions(true); }}>▧</button><div className="min-w-0 flex-1"><input className="field min-w-0" aria-label={tx("Nome da região", "Region name", "Nombre de la región")} value={region.name} onChange={e => setData(d => ({ ...d, regions: (d.regions ?? []).map(item => item.id === region.id ? { ...item, name: e.target.value } : item) }))} /><p className="mt-1 truncate text-xs opacity-70">{nationById(region.nationId)?.name ?? "—"} · {regionTileCount(region.id)} {tx("células", "cells", "celdas")}</p></div><input type="color" aria-label={tx("Cor da região", "Region color", "Color de la región")} className="h-8 w-8 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0" value={toHex(region.color)} onChange={e => setData(d => ({ ...d, regions: (d.regions ?? []).map(item => item.id === region.id ? { ...item, color: e.target.value } : item) }))} /><Button variant="ghost" size="sm" onClick={() => setDialog({ type: "confirm", title: tx("Excluir região", "Delete region", "Eliminar región"), message: tx(`Excluir a região “${region.name}”?`, `Delete the region “${region.name}”?`, `¿Eliminar la región “${region.name}”?`), onSubmit: () => { setData(d => ({ ...d, regions: (d.regions ?? []).filter(item => item.id !== region.id), regionTiles: Object.fromEntries(Object.entries(d.regionTiles ?? {}).filter(([, id]) => id !== region.id)) })); if (selectedRegionId === region.id) setSelectedRegionId(""); } })}>{tx("Excluir", "Delete", "Eliminar")}</Button></div>)}</div>}<Button variant="outline" size="sm" disabled={tool !== "regiao" || !selectedRegionId} onClick={() => { setTool("mover"); setSelectedRegionId(""); }}>{tx("Concluir delimitação", "Finish delimiting", "Terminar delimitación")}</Button></div>
           {visibleNations.length === 0 && <p className="text-xs text-muted-foreground">{t.noNations}</p>}
           <div className="grid gap-1">
             {visibleNations.map(n => (
@@ -787,7 +741,6 @@ export default function MapApp() {
           {data.bg && layers.background && <g clipPath="url(#map-bounds)"><image href={data.bg} width={W} height={H} preserveAspectRatio={data.bgFit === "stretch" ? "none" : data.bgFit === "cover" ? "xMidYMid slice" : "xMidYMid meet"} opacity={data.bgOpacity} transform={`translate(${data.bgX + W / 2},${data.bgY + H / 2}) rotate(${data.bgRotation}) scale(${data.bgScale}) translate(${-W / 2},${-H / 2})`} pointerEvents="none" /></g>}
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {layers.territories && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
-          {showRegions && layers.territories && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={region.id} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={0.14} stroke={region.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
           {data.showGrid && layers.grid && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
           {layers.comments && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
@@ -820,7 +773,6 @@ export default function MapApp() {
           })}
 
           {/* Nomes dos países com tamanho dinâmico pelo território e limite de zoom */}
-          {showRegions && layers.labels && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, keys }) => { let sx = 0, sy = 0; for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += x; sy += y; } const x = (sx / keys.length + 0.5) * CELL, y = (sy / keys.length + 0.5) * CELL; return <text key={`region-label-${region.id}`} x={x} y={y} textAnchor="middle" fontSize={Math.max(10, Math.min(20, 9 + Math.sqrt(keys.length) * 0.15))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>; })}
           {layers.labels && filter !== "alianças" && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(({ nation: n, keys: ks }) => {
             if (!ks.length) return null;
             let sx = 0, sy = 0; ks.forEach(k => { const [x = 0, y = 0] = k.split(",").map(Number); sx += x; sy += y; });
@@ -891,7 +843,7 @@ export default function MapApp() {
             <div><label className="label">{t.treaties}</label><textarea rows={4} value={selNation.treaties} onChange={e => upNation(selNation.id, { treaties: e.target.value })} className="field" /></div>
             <div><label className="label">{t.notes}</label><textarea rows={6} value={selNation.notes} onChange={e => upNation(selNation.id, { notes: e.target.value })} className="field" /></div></div></details>
             <Button onClick={() => { setBrush(selNation.id); setTool("pintar"); setSel(null); setPanelOpen(false); }} className="h-auto whitespace-normal rounded bg-primary px-2 py-2 text-sm text-primary-foreground">{t.paintThis}</Button>
-            <Button variant="ghost" onClick={() => setDialog({ type: "confirm", title: t.deleteNation, message: t.confirmDeleteNation, onSubmit: () => { setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id).map(n => ({ ...n, ...(n.overlordId === selNation.id ? { overlordId: undefined } : {}), enemyIds: (n.enemyIds ?? []).filter(id => id !== selNation.id) })), alliances: (d.alliances ?? []).map(a => ({ ...a, nationIds: a.nationIds.filter(id => id !== selNation.id) })).filter(a => a.nationIds.length >= 2), wars: (d.wars ?? []).map(w => ({ ...w, attackers: w.attackers.filter(id => id !== selNation.id), defenders: w.defenders.filter(id => id !== selNation.id) })).filter(w => w.attackers.length && w.defenders.length), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)), regions: (d.regions ?? []).filter(region => region.nationId !== selNation.id), regionTiles: Object.fromEntries(Object.entries(d.regionTiles ?? {}).filter(([key, regionId]) => d.tiles[key] !== selNation.id && (d.regions ?? []).some(region => region.id === regionId && region.nationId !== selNation.id))) })); setSel(null); } })} className="text-sm text-destructive">{t.deleteNation}</Button>
+            <Button variant="ghost" onClick={() => setDialog({ type: "confirm", title: t.deleteNation, message: t.confirmDeleteNation, onSubmit: () => { setData(d => ({ ...d, nations: d.nations.filter(n => n.id !== selNation.id).map(n => ({ ...n, ...(n.overlordId === selNation.id ? { overlordId: undefined } : {}), enemyIds: (n.enemyIds ?? []).filter(id => id !== selNation.id) })), alliances: (d.alliances ?? []).map(a => ({ ...a, nationIds: a.nationIds.filter(id => id !== selNation.id) })).filter(a => a.nationIds.length >= 2), wars: (d.wars ?? []).map(w => ({ ...w, attackers: w.attackers.filter(id => id !== selNation.id), defenders: w.defenders.filter(id => id !== selNation.id) })).filter(w => w.attackers.length && w.defenders.length), tiles: Object.fromEntries(Object.entries(d.tiles).filter(([, v]) => v !== selNation.id)) })); setSel(null); } })} className="text-sm text-destructive">{t.deleteNation}</Button>
           </div>}
 
           {/* Detalhes expandidos para Cidades, Capitais, Fortes e Portos */}
@@ -1038,18 +990,12 @@ function readMap(input: unknown): Data {
   });
   if (new Set(nations.map(n => n.id)).size !== nations.length) throw new Error("Duplicate nation");
   const ids = new Set(nations.map(n => n.id));
-  const regions: Region[] = Array.isArray(d["regions"]) ? (d["regions"] as Region[]).filter(region => region && typeof region.id === "string" && !!region.id && typeof region.name === "string" && !!region.name.trim() && typeof region.nationId === "string" && ids.has(region.nationId)).map(region => ({ id: region.id, name: region.name.trim(), nationId: region.nationId, color: typeof region.color === "string" && (/^#[0-9a-f]{6}$/i.test(region.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(region.color)) ? region.color : "#64748b" })) : [];
   const tiles: Record<string, string> = {};
   for (const [key, id] of Object.entries(expandTiles(d["tiles"] as Record<string, string>, factor))) {
     if (!/^\d+,\d+$/.test(key) || typeof id !== "string" || !ids.has(id)) throw new Error("Invalid territory");
     const [x = 0, y = 0] = key.split(",").map(Number);
     if (x >= COLS || y >= ROWS) throw new Error("Invalid cell");
     tiles[key] = id;
-  }
-  const regionTiles: Record<string, string> = {};
-  if (d["regionTiles"] && typeof d["regionTiles"] === "object" && !Array.isArray(d["regionTiles"])) for (const [key, regionId] of Object.entries(d["regionTiles"] as Record<string, unknown>)) {
-    const region = typeof regionId === "string" ? regions.find(item => item.id === regionId) : undefined;
-    if (/^\d+,\d+$/.test(key) && region && tiles[key] === region.nationId) { const [x = 0, y = 0] = key.split(",").map(Number); if (x >= 0 && y >= 0 && x < COLS && y < ROWS) regionTiles[key] = region.id; }
   }
   const markers: Marker[] = d["markers"].map((m: any) => {
     if (!m || typeof m.id !== "string" || !Object.prototype.hasOwnProperty.call(ICON, m.type) || !Number.isFinite(m.x) || !Number.isFinite(m.y)) throw new Error("Invalid marker");
@@ -1087,7 +1033,7 @@ function readMap(input: unknown): Data {
   const alliances: Alliance[] = Array.isArray(d["alliances"]) ? (d["alliances"] as Alliance[]).filter(a => a && typeof a.id === "string" && typeof a.name === "string").map(a => ({ id: a.id, name: a.name, nationIds: Array.isArray(a.nationIds) ? a.nationIds.filter(id => typeof id === "string" && validNationIds.has(id)) : [], color: typeof a.color === "string" && /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : "#64748b", image: flagImage(a.image) })) : [];
   const wars: War[] = Array.isArray(d["wars"]) ? (d["wars"] as War[]).filter(w => w && typeof w.id === "string" && typeof w.name === "string").map(w => ({ id: w.id, name: w.name, attackers: Array.isArray(w.attackers) ? w.attackers.filter(id => typeof id === "string" && validNationIds.has(id)) : [], defenders: Array.isArray(w.defenders) ? w.defenders.filter(id => typeof id === "string" && validNationIds.has(id)) : [], active: typeof w.active === "boolean" ? w.active : false, startedAt: typeof w.startedAt === "string" ? w.startedAt : new Date().toISOString(), endedAt: typeof w.endedAt === "string" ? w.endedAt : undefined })) : [];
   for (const nation of nations) { let cursor = nation.overlordId; const seen = new Set([nation.id]); while (cursor) { if (seen.has(cursor)) { nation.overlordId = undefined; break; } seen.add(cursor); cursor = nations.find(n => n.id === cursor)?.overlordId; } }
-  return { ...empty, cellSize: CELL, nations, regions, regionTiles, playerNationId: typeof d["playerNationId"] === "string" && nations.some(n => n.id === d["playerNationId"]) ? d["playerNationId"] : undefined, tiles, markers, lines, comments, alliances, wars, bg: image(d["bg"]) ?? null,
+  return { ...empty, cellSize: CELL, nations, playerNationId: typeof d["playerNationId"] === "string" && nations.some(n => n.id === d["playerNationId"]) ? d["playerNationId"] : undefined, tiles, markers, lines, comments, alliances, wars, bg: image(d["bg"]) ?? null,
     bgOpacity: finite(d["bgOpacity"], 0.6, 0, 1), bgFit: d["bgFit"] === "cover" || d["bgFit"] === "stretch" ? d["bgFit"] : "contain",
     bgScale: finite(d["bgScale"], 1, 0.2, 3), bgX: finite(d["bgX"], 0, -W, W), bgY: finite(d["bgY"], 0, -H, H), bgRotation: finite(d["bgRotation"], 0, -180, 180),
     smooth: typeof d["smooth"] === "boolean" ? d["smooth"] : true, showGrid: typeof d["showGrid"] === "boolean" ? d["showGrid"] : true };
