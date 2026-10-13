@@ -6,6 +6,7 @@ import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
 type Relation = "propria" | "amigavel" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; relations?: Record<string, Relation> | undefined; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
+type Region = { id: string; name: string; nationId: string; color: string };
 type Alliance = { id: string; name: string; nationIds: string[]; color: string; image?: string | undefined };
 type War = { id: string; name: string; attackers: string[]; defenders: string[]; active: boolean; startedAt: string; endedAt?: string | undefined };
 type MapComment = { id: string; x: number; y: number; text: string; createdAt: string; size?: number; fontFamily?: string; color?: string | undefined; rotation?: number };
@@ -34,14 +35,14 @@ type Marker = {
 };
 type LineType = "estrada" | "rota";
 type Line = { id: string; type: LineType; points: [number, number][] };
-type Data = { cellSize?: number; nations: Nation[]; playerNationId?: string | undefined; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; alliances?: Alliance[]; wars?: War[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
+type Data = { cellSize?: number; nations: Nation[]; regions?: Region[]; regionTiles?: Record<string, string>; playerNationId?: string | undefined; tiles: Record<string, string>; markers: Marker[]; lines: Line[]; comments: MapComment[]; alliances?: Alliance[]; wars?: War[]; bg: string | null; bgOpacity: number; bgFit: "contain" | "cover" | "stretch"; bgScale: number; bgX: number; bgY: number; bgRotation: number; smooth: boolean; showGrid: boolean };
 type AppDialog = { type: "text"; title: string; value: string; onSubmit: (value: string) => void } | { type: "confirm"; title: string; message: string; onSubmit: () => void } | { type: "save"; name: string; description: string; filename: string } | { type: "history"; selectedId: string } | { type: "status" } | { type: "compare" } | { type: "diplomacy" } | { type: "tutorial" };
-type Tool = "mover" | "pintar" | "balde" | "apagar" | "comentario" | MarkerType | LineType;
+type Tool = "mover" | "pintar" | "balde" | "apagar" | "regiao" | "comentario" | MarkerType | LineType;
 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
 const KEY = "atlas-nacoes-v1";
 const uid = () => Math.random().toString(36).slice(2, 9);
-const empty: Data = { cellSize: MAP_CELL, nations: [], playerNationId: undefined, tiles: {}, markers: [], lines: [], comments: [], alliances: [], wars: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
+const empty: Data = { cellSize: MAP_CELL, nations: [], regions: [], regionTiles: {}, playerNationId: undefined, tiles: {}, lines: [], comments: [], alliances: [], wars: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
 const RELS: Relation[] = ["propria", "amigavel", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
 const SHAPES: { id: MarkerShape; label: string }[] = [{ id: "circle", label: "Círculo" }, { id: "square", label: "Quadrado" }, { id: "triangle", label: "Triângulo" }, { id: "star", label: "Estrela" }, { id: "diamond", label: "Losango" }, { id: "hexagon", label: "Hexágono" }, { id: "cross", label: "Cruz" }];
@@ -65,6 +66,9 @@ export default function MapApp() {
   const [fullscreen, setFullscreen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [brushSize, setBrushSize] = useState(2);
+  const [showRegions, setShowRegions] = useState(false);
+  const [regionName, setRegionName] = useState("");
+  const [selectedRegionId, setSelectedRegionId] = useState("");
   const [filter, setFilter] = useState<"todas" | "propria" | "amigavel" | "neutra" | "inimigas" | "alianças" | "guerras">("todas");
   const [allianceName, setAllianceName] = useState("");
   const [allianceMembers, setAllianceMembers] = useState<string[]>([]);
@@ -248,13 +252,26 @@ export default function MapApp() {
     const cells = strokeCells(lastPaint.current ?? current, current, brushSize - 1);
     lastPaint.current = current;
     setData(d => {
-      const tiles = { ...d.tiles };
-      for (const cell of cells) {
-        if (tool === "apagar") delete tiles[cell]; else if (brush) tiles[cell] = brush;
+      if (tool === "regiao") {
+        const region = (d.regions ?? []).find(item => item.id === selectedRegionId);
+        if (!region) return d;
+        const regionTiles = { ...(d.regionTiles ?? {}) };
+        for (const cell of cells) if (d.tiles[cell] === region.nationId) regionTiles[cell] = region.id;
+        return { ...d, regionTiles };
       }
-      return { ...d, tiles };
+      const tiles = { ...d.tiles };
+      const regionTiles = { ...(d.regionTiles ?? {}) };
+      for (const cell of cells) {
+        if (tool === "apagar") { delete tiles[cell]; delete regionTiles[cell]; }
+        else if (brush) {
+          tiles[cell] = brush;
+          const assignedRegion = (d.regions ?? []).find(region => region.id === regionTiles[cell]);
+          if (assignedRegion && assignedRegion.nationId !== brush) delete regionTiles[cell];
+        }
+      }
+      return { ...d, tiles, regionTiles };
     });
-  }, [tool, brush, view, brushSize]);
+  }, [tool, brush, view, brushSize, selectedRegionId]);
 
   const stopDrag = () => {
     const finished = drag.current;
@@ -332,8 +349,9 @@ export default function MapApp() {
     const [wx, wy] = toWorld(e.clientX, e.clientY);
     if (tool === "comentario") {
       setDialog({ type: "text", title: tx("Texto sobre o mapa", "Text on map", "Texto en el mapa"), value: "", onSubmit: value => { if (value.trim()) setData(d => ({ ...d, comments: [...d.comments, { id: uid(), x: wx, y: wy, text: value.trim(), createdAt: new Date().toISOString(), size: 18, fontFamily: "Arial", rotation: 0 }] })); } });
-    } else if (tool === "pintar" || tool === "apagar") {
+    } else if (tool === "pintar" || tool === "apagar" || tool === "regiao") {
       if (tool === "pintar" && !brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
+      if (tool === "regiao" && !(data.regions ?? []).some(region => region.id === selectedRegionId && region.nationId === selNation?.id)) { setNotice(tx("Selecione uma região deste país no painel do país.", "Select a region belonging to this country in the country panel.", "Selecciona una región de este país en el panel del país.")); return; }
       drag.current = { mode: "paint", sx: 0, sy: 0, vx: 0, vy: 0 }; paint(e.clientX, e.clientY);
     } else if (tool === "balde") {
       if (!brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
@@ -528,6 +546,18 @@ export default function MapApp() {
   const selLine = sel?.kind === "line" ? data.lines.find(m => m.id === sel.id) : undefined;
   const selComment = sel?.kind === "comment" ? data.comments.find(c => c.id === sel.id) : undefined;
   const tileCount = (id: string) => Object.values(data.tiles).filter(t => t === id).length;
+  const regionTileCount = (id: string) => Object.values(data.regionTiles ?? {}).filter(regionId => regionId === id).length;
+  const createRegion = (nationId: string) => {
+    if (!regionName.trim()) return;
+    const region: Region = { id: uid(), name: regionName.trim(), nationId, color: `hsl(${Math.floor(Math.random() * 360)} 65% 45%)` };
+    setData(d => ({ ...d, regions: [...(d.regions ?? []), region] }));
+    setSelectedRegionId(region.id); setRegionName(""); setShowRegions(true); setTool("regiao");
+    setNotice(tx("Região criada. Pinte as células do país para delimitá-la.", "Region created. Paint cells belonging to this country to delimit it.", "Región creada. Pinta celdas de este país para delimitarla."));
+  };
+  const regionTerritories = useMemo(() => (data.regions ?? []).map(region => {
+    const keys = Object.entries(data.regionTiles ?? {}).filter(([key, id]) => id === region.id && data.tiles[key] === region.nationId).map(([key]) => key);
+    return { region, keys, path: territoryPath(keys, data.smooth) };
+  }), [data.regions, data.regionTiles, data.tiles, data.smooth]);
   const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
   const worldBalance = worldStats.income - worldStats.expenses;
   const foodBalance = worldStats.foodProduction - worldStats.foodConsumption;
@@ -672,6 +702,7 @@ export default function MapApp() {
         {viewerTab === "layers" && <section className="grid gap-3" role="tabpanel">
           <h3 className="font-semibold"><Layers className="mr-1 inline h-4 w-4"/>{tx("Camadas visíveis","Visible layers","Capas visibles")}</h3>
           <p className="text-xs opacity-70">{tx("Ative ou oculte elementos do mapa. Isso altera apenas a visualização, não os dados do arquivo.","Show or hide map elements. This changes only the view, not the file data.","Muestra u oculta elementos del mapa. Esto solo cambia la vista, no los datos del archivo.")}</p>
+          <label className="flex items-center gap-2 rounded border border-current/10 p-2 text-sm"><input type="checkbox" checked={showRegions} onChange={e=>setShowRegions(e.target.checked)}/>{tx("Mostrar estados e regiões","Show states and regions","Mostrar estados y regiones")}</label>
           {([{key:"background",label:tx("Mapa de fundo","Background map","Mapa de fondo")},{key:"territories",label:tx("Territórios","Territories","Territorios")},{key:"labels",label:tx("Nomes e bandeiras","Names and flags","Nombres y banderas")},{key:"markers",label:tx("Localidades e símbolos","Locations and symbols","Localidades y símbolos")},{key:"routes",label:tx("Estradas e rotas","Roads and routes","Caminos y rutas")},{key:"comments",label:tx("Textos e notas no mapa","Map text and notes","Textos y notas del mapa")},{key:"grid",label:tx("Grade","Grid","Cuadrícula")}] as const).map(layer=><label key={layer.key} className="flex items-center gap-2 rounded border border-current/10 p-2 text-sm"><input type="checkbox" checked={layers[layer.key]} onChange={e=>setLayers(cur=>({...cur,[layer.key]:e.target.checked}))}/>{layer.label}</label>)}
           <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="outline" onClick={()=>setLayers({background:true,territories:true,labels:true,markers:true,routes:true,comments:true,grid:true})}>{tx("Mostrar tudo","Show all","Mostrar todo")}</Button><Button size="sm" variant="outline" onClick={()=>setLayers({background:false,territories:false,labels:false,markers:false,routes:false,comments:false,grid:false})}>{tx("Ocultar tudo","Hide all","Ocultar todo")}</Button></div>
         </section>}
@@ -691,7 +722,7 @@ export default function MapApp() {
           </div>
           {(tool === "pintar" || tool === "apagar") && <div className="mt-3"><label htmlFor="brush-size" className="label">{t.brushSize} · {brushSize}</label><input id="brush-size" type="range" min={1} max={10} value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="w-full" /></div>}
           <div className="mt-3 grid gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.smooth} onChange={e => setData(d => ({ ...d, smooth: e.target.checked }))} />{t.smooth}</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.showGrid} onChange={e => setData(d => ({ ...d, showGrid: e.target.checked }))} />{t.grid}</label></div>
-          <div className="mt-3 rounded-md border border-border p-2"><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><Layers className="h-4 w-4" />{tx("Camadas visíveis", "Visible layers", "Capas visibles")}</h3>{([{ key: "background", label: tx("Mapa de fundo", "Background map", "Mapa de fondo") }, { key: "territories", label: tx("Territórios", "Territories", "Territorios") }, { key: "labels", label: tx("Nomes e bandeiras", "Names and flags", "Nombres y banderas") }, { key: "markers", label: tx("Cidades e símbolos", "Cities and symbols", "Ciudades y símbolos") }, { key: "routes", label: tx("Estradas e rotas", "Roads and routes", "Caminos y rutas") }, { key: "comments", label: tx("Textos no mapa", "Map text", "Textos en el mapa") }, { key: "grid", label: tx("Grade", "Grid", "Cuadrícula") }] as const).map(layer => <label key={layer.key} className="flex items-center gap-2 py-1 text-sm"><input type="checkbox" checked={layers[layer.key]} onChange={e => setLayers(current => ({ ...current, [layer.key]: e.target.checked }))} />{layer.label}</label>)}</div>
+          <div className="mt-3 rounded-md border border-border p-2"><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><Layers className="h-4 w-4" />{tx("Camadas visíveis", "Visible layers", "Capas visibles")}</h3><label className="mb-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={showRegions} onChange={e => setShowRegions(e.target.checked)} />{tx("Mostrar estados e regiões", "Show states and regions", "Mostrar estados y regiones")}</label>{([{ key: "background", label: tx("Mapa de fundo", "Background map", "Mapa de fondo") }, { key: "territories", label: tx("Territórios", "Territories", "Territorios") }, { key: "labels", label: tx("Nomes e bandeiras", "Names and flags", "Nombres y banderas") }, { key: "markers", label: tx("Cidades e símbolos", "Cities and symbols", "Ciudades y símbolos") }, { key: "routes", label: tx("Estradas e rotas", "Roads and routes", "Caminos y rutas") }, { key: "comments", label: tx("Textos no mapa", "Map text", "Textos en el mapa") }, { key: "grid", label: tx("Grade", "Grid", "Cuadrícula") }] as const).map(layer => <label key={layer.key} className="flex items-center gap-2 py-1 text-sm"><input type="checkbox" checked={layers[layer.key]} onChange={e => setLayers(current => ({ ...current, [layer.key]: e.target.checked }))} />{layer.label}</label>)}</div>
           {(tool === "estrada" || tool === "rota") && <Button variant="outline" size="sm" className="mt-2 w-full" disabled={draft.length < 2} onClick={finishLine}>{t.finishLine}</Button>}
           {(tool === "pintar" || tool === "balde") && (brush && nationById(brush) ? <p className="mt-2 text-sm">{t.paintingWith}: <span style={{ color: nationById(brush)?.color }}>■</span> {nationById(brush)?.name}</p> : <div className="mt-2 grid gap-1"><p className="text-sm text-destructive">{data.nations.length ? t.pickNation : t.createFirst}</p>{!data.nations.length && <Button size="sm" onClick={addNation}>{t.createNation}</Button>}</div>)}
         </section></details>
@@ -741,6 +772,7 @@ export default function MapApp() {
           {data.bg && layers.background && <g clipPath="url(#map-bounds)"><image href={data.bg} width={W} height={H} preserveAspectRatio={data.bgFit === "stretch" ? "none" : data.bgFit === "cover" ? "xMidYMid slice" : "xMidYMid meet"} opacity={data.bgOpacity} transform={`translate(${data.bgX + W / 2},${data.bgY + H / 2}) rotate(${data.bgRotation}) scale(${data.bgScale}) translate(${-W / 2},${-H / 2})`} pointerEvents="none" /></g>}
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {layers.territories && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
+          {showRegions && layers.territories && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <path key={`region-${region.id}`} data-region={region.id} d={path} fill={region.color} fillOpacity={0.08} stroke={region.color} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" pointerEvents="none"><title>{region.name}</title></path>)}
           {data.showGrid && layers.grid && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
           {layers.comments && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
@@ -773,6 +805,7 @@ export default function MapApp() {
           })}
 
           {/* Nomes dos países com tamanho dinâmico pelo território e limite de zoom */}
+          {showRegions && layers.labels && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, keys }) => { let sx = 0, sy = 0; for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += x; sy += y; } const x = (sx / keys.length + 0.5) * CELL, y = (sy / keys.length + 0.5) * CELL; return <text key={`region-label-${region.id}`} x={x} y={y} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>; })}
           {layers.labels && filter !== "alianças" && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(({ nation: n, keys: ks }) => {
             if (!ks.length) return null;
             let sx = 0, sy = 0; ks.forEach(k => { const [x = 0, y = 0] = k.split(",").map(Number); sx += x; sy += y; });
