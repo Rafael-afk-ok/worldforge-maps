@@ -357,7 +357,7 @@ export default function MapApp() {
       if (!brush) { setPanelOpen(true); setNotice(data.nations.length ? t.pickNation : t.createFirst); return; }
       const c = cellAt(e.clientX, e.clientY);
       if (c) {
-        setData(d => { const tiles = floodFill(c[0], c[1], brush, d.tiles); return { ...d, tiles }; });
+        setData(d => { const tiles = floodFill(c[0], c[1], brush, d.tiles); const regionById = new Map((d.regions ?? []).map(region => [region.id, region] as const)); const regionTiles = Object.fromEntries(Object.entries(d.regionTiles ?? {}).filter(([key, id]) => tiles[key] === regionById.get(id)?.nationId)); return { ...d, tiles, regionTiles }; });
       }
     } else if (tool === "capital" || tool === "cidade" || tool === "forte" || tool === "porto") {
       const m: Marker = { id: uid(), type: tool, shape: tool === "capital" ? "star" : tool === "cidade" ? "circle" : tool === "forte" ? "square" : "diamond", x: wx, y: wy, name: t.newMarker, notes: "", npcs: 100, grossIncome: 50, expenses: 20, foodProduction: 0, foodConsumption: 0, production: "" };
@@ -747,7 +747,7 @@ export default function MapApp() {
           {visibleNations.length === 0 && <p className="text-xs text-muted-foreground">{t.noNations}</p>}
           <div className="grid gap-1">
             {visibleNations.map(n => (
-              <Button variant="ghost" key={n.id} onClick={() => { setBrush(n.id); setSel({ kind: "nation", id: n.id }); }}
+              <Button variant="ghost" key={n.id} onClick={() => { setBrush(n.id); setSel({ kind: "nation", id: n.id }); setSelectedRegionId(""); if (tool === "regiao") setTool("mover"); }}
                 className={`h-auto min-h-9 flex-wrap items-center gap-2 rounded px-2 py-1 text-left text-sm ${brush === n.id ? "ring-1 ring-primary" : ""} hover:bg-accent`}>
                 {n.flag && <img src={n.flag} alt={`${t.flag} ${n.name}`} className="h-4 w-6 object-contain" />}<span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: n.color }} />
                 <span className="flex-1 truncate">{n.name}</span>
