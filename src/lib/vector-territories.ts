@@ -75,7 +75,24 @@ function traceRings(keys: string[]): [number, number][][] {
     if (ring.length >= 4) {
       const firstPoint = ring[0], lastPoint = ring[ring.length - 1];
       if (firstPoint && lastPoint && (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1])) ring.push(firstPoint);
-      if (ring.length >= 5) rings.push(ring);
+      if (ring.length >= 5) {
+        const openRing = ring.slice(0, -1);
+        const simplified: [number, number][] = [];
+        for (let i = 0; i < openRing.length; i++) {
+          const previous = openRing[(i + openRing.length - 1) % openRing.length];
+          const current = openRing[i];
+          const next = openRing[(i + 1) % openRing.length];
+          if (!previous || !current || !next) continue;
+          const cross = (current[0] - previous[0]) * (next[1] - current[1]) -
+            (current[1] - previous[1]) * (next[0] - current[0]);
+          if (cross !== 0) simplified.push(current);
+        }
+        if (simplified.length >= 3) {
+          const firstPoint = simplified[0];
+          if (firstPoint) simplified.push(firstPoint);
+          rings.push(simplified);
+        }
+      }
     }
   }
   return rings;
