@@ -121,6 +121,7 @@ export default function MapApp() {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
 
   const vectorAreasForCurrentMap = useMemo(() => tilesToVectorAreas(data.tiles, data.regionTiles ?? {}), [data.tiles, data.regionTiles]);
+  const vectorizedVersions = useMemo(() => versions.map(version => ({ ...version, data: toVectorMap(version.data) })), [versions]);
   const t = DICTS[lang];
   const tx = (pt: string, en: string, es = en) => lang === "pt" ? pt : lang === "es" ? es : en;
   const REL: Record<Relation, string> = { propria: t.rel_propria, amigavel: tx("Amigável", "Friendly", "Amistosa"), neutra: t.rel_neutra, inimiga: t.rel_inimiga };
@@ -223,7 +224,7 @@ export default function MapApp() {
     pushHistory(data);
   }, [data, loaded]);
 
-  useEffect(() => { if (loaded && mode === "edit" && drag.current?.mode !== "paint") try { localStorage.setItem(KEY, JSON.stringify({ map: toVectorMap(data, vectorAreasForCurrentMap), mapName, mapDescription, versions: versions.map(version => ({ ...version, data: toVectorMap(version.data) })) })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded, mode, persistRevision, vectorAreasForCurrentMap]);
+  useEffect(() => { if (loaded && mode === "edit" && drag.current?.mode !== "paint") try { localStorage.setItem(KEY, JSON.stringify({ map: toVectorMap(data, vectorAreasForCurrentMap), mapName, mapDescription, versions: vectorizedVersions })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded, mode, persistRevision, vectorAreasForCurrentMap]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
