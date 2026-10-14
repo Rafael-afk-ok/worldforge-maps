@@ -125,6 +125,7 @@ export default function MapApp() {
   const appRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const lastPaint = useRef<[number, number] | null>(null);
+  const lastPaintAt = useRef(0);
   const [loaded, setLoaded] = useState(false);
   const [tool, setTool] = useState<Tool>("mover");
   const [brush, setBrush] = useState<string | null>(null);
@@ -257,7 +258,12 @@ export default function MapApp() {
     const [wx, wy] = toWorld(cx, cy); const x = Math.floor(wx / CELL), y = Math.floor(wy / CELL);
     return x >= 0 && y >= 0 && x < COLS && y < ROWS ? [x, y] as [number, number] : null;
   };
-  const paint = useCallback((cx: number, cy: number) => {
+  const paint = useCallback((cx: number, cy: number, force = false) => {
+    // Dense maps rebuild SVG territory geometry during paint; cap updates while dragging.
+    // strokeCells bridges skipped pointer events so the stroke remains continuous.
+    const now = performance.now();
+    if (!force && now - lastPaintAt.current < 32) return;
+    lastPaintAt.current = now;
     const [wx, wy] = toWorld(cx, cy);
     const current: [number, number] = [wx / CELL, wy / CELL];
     const cells = strokeCells(lastPaint.current ?? current, current, brushSize - 1);
@@ -288,6 +294,7 @@ export default function MapApp() {
     const finished = drag.current;
     drag.current = null;
     lastPaint.current = null;
+    lastPaintAt.current = 0;
     if (finished?.mode === "paint") pushHistory(data);
   };
   const fitMap = () => {
@@ -908,7 +915,7 @@ export default function MapApp() {
 
       <div ref={ref} aria-label={t.mapLabel} className="relative min-w-0 flex-1 touch-none select-none overflow-hidden bg-muted"
         style={{ cursor: tool === "mover" ? "grab" : "crosshair" }}
-        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={e => { if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); if (touchPoints.current.size < 2) pinchStart.current = null; } stopDrag(); }} onPointerCancel={e => { if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); pinchStart.current = null; } stopDrag(); }} onLostPointerCapture={stopDrag} onPointerLeave={() => setCursorPos(null)}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={e => { if (drag.current?.mode === "paint") paint(e.clientX, e.clientY, true); if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); if (touchPoints.current.size < 2) pinchStart.current = null; } stopDrag(); }} onPointerCancel={e => { if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); pinchStart.current = null; } stopDrag(); }} onLostPointerCapture={stopDrag} onPointerLeave={() => setCursorPos(null)}
         onDoubleClick={finishLine} onContextMenu={e => e.preventDefault()}>
         <svg className="absolute left-0 top-0 overflow-visible" width={W} height={H}
           style={{ transform: `translate(${view.x}px,${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
