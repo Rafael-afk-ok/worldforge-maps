@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
+import { tilesToVectorAreas, vectorAreasToTiles, type VectorArea } from "@/lib/vector-territories";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://luctonaqnzzqhcuwjkht.supabase.co";
@@ -171,7 +172,7 @@ export default function MapApp() {
       const s = localStorage.getItem(KEY);
       const stored = s ? JSON.parse(s) as Record<string, unknown> : null;
       const initial = stored ? readMap(stored["map"] ?? stored) : empty;
-      if (stored && Array.isArray(stored["versions"])) setVersions(stored["versions"] as MapVersion[]);
+      if (stored && Array.isArray(stored["versions"])) setVersions((stored["versions"] as MapVersion[]).map(version => ({ ...version, data: readMap(version.data) })));
       if (stored && typeof stored["mapName"] === "string") setMapName(stored["mapName"]);
       if (stored && typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]);
       setData(initial);
@@ -220,7 +221,7 @@ export default function MapApp() {
     pushHistory(data);
   }, [data, loaded]);
 
-  useEffect(() => { if (loaded && mode === "edit") try { localStorage.setItem(KEY, JSON.stringify({ map: data, mapName, mapDescription, versions })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded, mode]);
+  useEffect(() => { if (loaded && mode === "edit") try { localStorage.setItem(KEY, JSON.stringify({ map: toVectorMap(data), mapName, mapDescription, versions: versions.map(version => ({ ...version, data: toVectorMap(version.data) })) })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded, mode]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -545,7 +546,7 @@ export default function MapApp() {
   const completeExport = (name: string, description: string, requestedFile: string) => {
     const now = new Date().toISOString(); const snapshot: MapVersion = { id: uid(), name: name.trim() || "Meu mundo", description: description.trim(), createdAt: now, data: JSON.parse(JSON.stringify(data)) as Data };
     const nextVersions = [...versions, snapshot].slice(-30); setMapName(snapshot.name); setMapDescription(snapshot.description); setVersions(nextVersions);
-    const payload = { format: "worldforge-map", version: 3, metadata: { name: snapshot.name, description: snapshot.description, updatedAt: now }, map: data, versions: nextVersions };
+    const payload = { format: "worldforge-map", version: 4, metadata: { name: snapshot.name, description: snapshot.description, updatedAt: now }, map: toVectorMap(data), versions: nextVersions.map(version => ({ ...version, data: toVectorMap(version.data) })) };
     const safe = (requestedFile.trim() || snapshot.name).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "meu-mundo";
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })); const a = document.createElement("a"); a.href = url; a.download = `${safe}.json`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setNotice(tx("Mapa e histórico exportados em JSON.", "Map and history exported as JSON.", "Mapa e historial exportados en JSON."));
@@ -1160,17 +1161,24 @@ function toHex(c: string) {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
+function toVectorMap(map: Data) {
+  return { ...map, cellSize: undefined, tiles: undefined, regionTiles: undefined, vectorAreas: tilesToVectorAreas(map.tiles, map.regionTiles ?? {}) };
+}
+
 function readMap(input: unknown): Data {
   if (!input || typeof input !== "object") throw new Error("Invalid map");
   const d = input as Record<string, unknown>;
-  if (!Array.isArray(d["nations"]) || !Array.isArray(d["markers"]) || !Array.isArray(d["lines"]) || !d["tiles"] || typeof d["tiles"] !== "object" || Array.isArray(d["tiles"])) throw new Error("Invalid map");
+  const vectorAreas = Array.isArray(d["vectorAreas"]) ? d["vectorAreas"] as VectorArea[] : null;
+  const vectorRaster = vectorAreas ? vectorAreasToTiles(vectorAreas) : null;
+  const rawTiles = d["tiles"] && typeof d["tiles"] === "object" && !Array.isArray(d["tiles"]) ? d["tiles"] as Record<string, string> : vectorRaster?.tiles;
+  if (!Array.isArray(d["nations"]) || !Array.isArray(d["markers"]) || !Array.isArray(d["lines"]) || !rawTiles) throw new Error("Invalid map");
   const text = (value: unknown) => typeof value === "string" ? value : "";
   const num = (value: unknown, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
   const finite = (value: unknown, fallback: number, min: number, max: number) => typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
   const image = (value: unknown) => typeof value === "string" && /^data:image\/(png|jpeg|webp|gif|avif);base64,/.test(value) ? value : undefined;
   const flagImage = (value: unknown) => image(value) ?? (typeof value === "string" && /^https:\/\/\S+$/.test(value) ? value : undefined);
   // Imported files are untrusted: clamp legacy cell sizes before expanding tiles.
-  const oldCell = typeof d["cellSize"] === "number" && Number.isFinite(d["cellSize"]) ? Math.max(CELL, Math.min(40, d["cellSize"])) : 20;
+  const oldCell = vectorAreas ? CELL : typeof d["cellSize"] === "number" && Number.isFinite(d["cellSize"]) ? Math.max(CELL, Math.min(40, d["cellSize"])) : 20;
   const factor = Math.max(1, Math.min(20, Math.round(oldCell / CELL)));
   const nations: Nation[] = d["nations"].map((n: Nation) => {
     if (!n || typeof n !== "object") throw new Error("Invalid nation");
@@ -1184,7 +1192,7 @@ function readMap(input: unknown): Data {
   const ids = new Set(nations.map(n => n.id));
   const regions: Region[] = Array.isArray(d["regions"]) ? (d["regions"] as Region[]).filter(region => region && typeof region.id === "string" && !!region.id && typeof region.name === "string" && !!region.name.trim() && typeof region.nationId === "string" && ids.has(region.nationId)).map(region => ({ id: region.id, name: region.name.trim(), nationId: region.nationId, color: typeof region.color === "string" && (/^#[0-9a-f]{6}$/i.test(region.color) || /^hsl\(\d+\s+\d+%\s+\d+%\)$/.test(region.color)) ? region.color : "#64748b" })) : [];
   const tiles: Record<string, string> = {};
-  for (const [key, id] of Object.entries(expandTiles(d["tiles"] as Record<string, string>, factor))) {
+  for (const [key, id] of Object.entries(expandTiles(rawTiles, factor))) {
     if (!/^\d+,\d+$/.test(key) || typeof id !== "string" || !ids.has(id)) throw new Error("Invalid territory");
     const [x = 0, y = 0] = key.split(",").map(Number);
     if (x >= COLS || y >= ROWS) throw new Error("Invalid cell");
@@ -1227,7 +1235,8 @@ function readMap(input: unknown): Data {
   const wars: War[] = Array.isArray(d["wars"]) ? (d["wars"] as War[]).filter(w => w && typeof w.id === "string" && typeof w.name === "string").map(w => ({ id: w.id, name: w.name, attackers: Array.isArray(w.attackers) ? w.attackers.filter(id => typeof id === "string" && validNationIds.has(id)) : [], defenders: Array.isArray(w.defenders) ? w.defenders.filter(id => typeof id === "string" && validNationIds.has(id)) : [], active: typeof w.active === "boolean" ? w.active : false, startedAt: typeof w.startedAt === "string" ? w.startedAt : new Date().toISOString(), endedAt: typeof w.endedAt === "string" ? w.endedAt : undefined })) : [];
   for (const nation of nations) { let cursor = nation.overlordId; const seen = new Set([nation.id]); while (cursor) { if (seen.has(cursor)) { nation.overlordId = undefined; break; } seen.add(cursor); cursor = nations.find(n => n.id === cursor)?.overlordId; } }
   const regionTiles: Record<string, string> = {};
-  if (d["regionTiles"] && typeof d["regionTiles"] === "object" && !Array.isArray(d["regionTiles"])) for (const [key, regionId] of Object.entries(d["regionTiles"] as Record<string, unknown>)) {
+  const rawRegionTiles = d["regionTiles"] && typeof d["regionTiles"] === "object" && !Array.isArray(d["regionTiles"]) ? d["regionTiles"] as Record<string, unknown> : vectorRaster?.regionTiles;
+  if (rawRegionTiles) for (const [key, regionId] of Object.entries(rawRegionTiles)) {
     const region = typeof regionId === "string" ? regions.find(item => item.id === regionId) : undefined;
     if (/^\d+,\d+$/.test(key) && region && tiles[key] === region.nationId) { const [x = 0, y = 0] = key.split(",").map(Number); if (x >= 0 && y >= 0 && x < COLS && y < ROWS) regionTiles[key] = region.id; }
   }
