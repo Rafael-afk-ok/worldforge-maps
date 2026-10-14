@@ -120,6 +120,7 @@ export default function MapApp() {
   const [canRedo, setCanRedo] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
 
+  const vectorAreasForCurrentMap = useMemo(() => tilesToVectorAreas(data.tiles, data.regionTiles ?? {}), [data.tiles, data.regionTiles]);
   const t = DICTS[lang];
   const tx = (pt: string, en: string, es = en) => lang === "pt" ? pt : lang === "es" ? es : en;
   const REL: Record<Relation, string> = { propria: t.rel_propria, amigavel: tx("Amigável", "Friendly", "Amistosa"), neutra: t.rel_neutra, inimiga: t.rel_inimiga };
@@ -127,6 +128,7 @@ export default function MapApp() {
   const importRef = useRef<HTMLInputElement>(null);
   const lastPaint = useRef<[number, number] | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [persistRevision, setPersistRevision] = useState(0);
   const [tool, setTool] = useState<Tool>("mover");
   const [brush, setBrush] = useState<string | null>(null);
   const [sel, setSel] = useState<Sel>(null);
@@ -221,7 +223,7 @@ export default function MapApp() {
     pushHistory(data);
   }, [data, loaded]);
 
-  useEffect(() => { if (loaded && mode === "edit") try { localStorage.setItem(KEY, JSON.stringify({ map: toVectorMap(data), mapName, mapDescription, versions: versions.map(version => ({ ...version, data: toVectorMap(version.data) })) })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded, mode]);
+  useEffect(() => { if (loaded && mode === "edit" && drag.current?.mode !== "paint") try { localStorage.setItem(KEY, JSON.stringify({ map: toVectorMap(data, vectorAreasForCurrentMap), mapName, mapDescription, versions: versions.map(version => ({ ...version, data: toVectorMap(version.data) })) })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded, mode, persistRevision, vectorAreasForCurrentMap]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -289,7 +291,7 @@ export default function MapApp() {
     const finished = drag.current;
     drag.current = null;
     lastPaint.current = null;
-    if (finished?.mode === "paint") pushHistory(data);
+    if (finished?.mode === "paint") { pushHistory(data); setPersistRevision(revision => revision + 1); }
   };
   const fitMap = () => {
     const r = ref.current?.getBoundingClientRect(); if (!r) return;
@@ -546,7 +548,7 @@ export default function MapApp() {
   const completeExport = (name: string, description: string, requestedFile: string) => {
     const now = new Date().toISOString(); const snapshot: MapVersion = { id: uid(), name: name.trim() || "Meu mundo", description: description.trim(), createdAt: now, data: JSON.parse(JSON.stringify(data)) as Data };
     const nextVersions = [...versions, snapshot].slice(-30); setMapName(snapshot.name); setMapDescription(snapshot.description); setVersions(nextVersions);
-    const payload = { format: "worldforge-map", version: 4, metadata: { name: snapshot.name, description: snapshot.description, updatedAt: now }, map: toVectorMap(data), versions: nextVersions.map(version => ({ ...version, data: toVectorMap(version.data) })) };
+    const payload = { format: "worldforge-map", version: 4, metadata: { name: snapshot.name, description: snapshot.description, updatedAt: now }, map: toVectorMap(data, vectorAreasForCurrentMap), versions: nextVersions.map(version => ({ ...version, data: toVectorMap(version.data) })) };
     const safe = (requestedFile.trim() || snapshot.name).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "meu-mundo";
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })); const a = document.createElement("a"); a.href = url; a.download = `${safe}.json`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setNotice(tx("Mapa e histórico exportados em JSON.", "Map and history exported as JSON.", "Mapa e historial exportados en JSON."));
@@ -606,7 +608,7 @@ export default function MapApp() {
         },
         body: JSON.stringify({
           password,
-          map_data: toVectorMap(data),
+          map_data: toVectorMap(data, vectorAreasForCurrentMap),
           map_name: mapName,
           map_description: mapDescription,
         }),
@@ -1161,8 +1163,8 @@ function toHex(c: string) {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-function toVectorMap(map: Data) {
-  return { ...map, cellSize: undefined, tiles: undefined, regionTiles: undefined, vectorAreas: tilesToVectorAreas(map.tiles, map.regionTiles ?? {}) };
+function toVectorMap(map: Data, vectorAreas = tilesToVectorAreas(map.tiles, map.regionTiles ?? {})) {
+  return { ...map, cellSize: undefined, tiles: undefined, regionTiles: undefined, vectorAreas };
 }
 
 function readMap(input: unknown): Data {
