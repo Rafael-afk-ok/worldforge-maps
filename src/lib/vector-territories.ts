@@ -124,7 +124,10 @@ export function vectorAreasToTiles(areas: VectorArea[]) {
   const tiles: Record<string, string> = {};
   const regionTiles: Record<string, string> = {};
 
-  for (const area of areas) {
+  for (const candidate of areas as unknown[]) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const area = candidate as VectorArea;
+    if (typeof area.id !== "string" || !Array.isArray(area.rings) || (area.kind !== "nation" && area.kind !== "region")) continue;
     const validRings = area.rings.filter(ring => Array.isArray(ring) && ring.length >= 4 &&
       ring.every(point => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite)));
     if (!validRings.length || !area.id || (area.kind !== "nation" && area.kind !== "region")) continue;
