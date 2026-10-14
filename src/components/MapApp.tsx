@@ -125,6 +125,8 @@ export default function MapApp() {
   const appRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const lastPaint = useRef<[number, number] | null>(null);
+  const pendingPaint = useRef(new Map<string, { nationId: string | null; regionId: string | null }>());
+  const [previewPaintCells, setPreviewPaintCells] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [tool, setTool] = useState<Tool>("mover");
   const [brush, setBrush] = useState<string | null>(null);
@@ -262,33 +264,45 @@ export default function MapApp() {
     const current: [number, number] = [wx / CELL, wy / CELL];
     const cells = strokeCells(lastPaint.current ?? current, current, brushSize - 1);
     lastPaint.current = current;
-    setData(d => {
+    const pending = pendingPaint.current;
+    const regionById = new Map((data.regions ?? []).map(region => [region.id, region] as const));
+    for (const cell of cells) {
+      const currentNation = pending.has(cell) ? pending.get(cell)!.nationId : (data.tiles[cell] ?? null);
+      const currentRegion = pending.has(cell) ? pending.get(cell)!.regionId : ((data.regionTiles ?? {})[cell] ?? null);
       if (tool === "regiao") {
-        const region = (d.regions ?? []).find(item => item.id === selectedRegionId);
-        if (!region) return d;
-        const regionTiles = { ...(d.regionTiles ?? {}) };
-        for (const cell of cells) if (d.tiles[cell] === region.nationId) regionTiles[cell] = region.id;
-        return { ...d, regionTiles };
+        const region = (data.regions ?? []).find(item => item.id === selectedRegionId);
+        if (region && currentNation === region.nationId) pending.set(cell, { nationId: currentNation, regionId: region.id });
+      } else if (tool === "apagar") {
+        pending.set(cell, { nationId: null, regionId: null });
+      } else if (brush) {
+        const assignedRegion = currentRegion ? regionById.get(currentRegion) : undefined;
+        pending.set(cell, { nationId: brush, regionId: assignedRegion && assignedRegion.nationId !== brush ? null : currentRegion });
       }
-      const tiles = { ...d.tiles };
-      const regionTiles = { ...(d.regionTiles ?? {}) };
-      for (const cell of cells) {
-        if (tool === "apagar") { delete tiles[cell]; delete regionTiles[cell]; }
-        else if (brush) {
-          tiles[cell] = brush;
-          const assignedRegion = (d.regions ?? []).find(region => region.id === regionTiles[cell]);
-          if (assignedRegion && assignedRegion.nationId !== brush) delete regionTiles[cell];
-        }
-      }
-      return { ...d, tiles, regionTiles };
-    });
-  }, [tool, brush, view, brushSize, selectedRegionId]);
+    }
+    setPreviewPaintCells(Array.from(pending.keys()));
+  }, [tool, brush, data, brushSize, selectedRegionId]);
 
+  const finishPaint = () => {
+    const pending = pendingPaint.current;
+    if (pending.size) {
+      const tiles = { ...data.tiles };
+      const regionTiles = { ...(data.regionTiles ?? {}) };
+      for (const [cell, value] of pending) {
+        if (value.nationId === null) delete tiles[cell]; else tiles[cell] = value.nationId;
+        if (value.regionId === null) delete regionTiles[cell]; else regionTiles[cell] = value.regionId;
+      }
+      const nextData = { ...data, tiles, regionTiles };
+      setData(nextData);
+      pushHistory(nextData);
+    }
+    pending.clear();
+    setPreviewPaintCells([]);
+  };
   const stopDrag = () => {
     const finished = drag.current;
     drag.current = null;
     lastPaint.current = null;
-    if (finished?.mode === "paint") pushHistory(data);
+    if (finished?.mode === "paint") finishPaint();
   };
   const fitMap = () => {
     const r = ref.current?.getBoundingClientRect(); if (!r) return;
@@ -918,6 +932,14 @@ export default function MapApp() {
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {layers.territories && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
           {showRegions && layers.territories && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={`region-${region.id}`} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={data.regionOpacity ?? 0.45} stroke={region.color} strokeOpacity={data.regionOpacity ?? 0.45} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
+          {previewPaintCells.map(cell => {
+            const [x, y] = cell.split(",").map(Number);
+            const pending = pendingPaint.current.get(cell);
+            const region = pending?.regionId ? (data.regions ?? []).find(item => item.id === pending.regionId) : undefined;
+            const nation = pending?.nationId ? nationById(pending.nationId) : undefined;
+            const fill = tool === "regiao" ? (region?.color ?? nation?.color ?? "var(--background)") : (nation?.color ?? "var(--background)");
+            return <rect key={`paint-preview-${cell}`} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill={fill} fillOpacity={tool === "regiao" ? (data.regionOpacity ?? 0.45) : pending?.nationId ? 0.6 : 1} pointerEvents="none" />;
+          })}
           {data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= 0.35) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
           {layers.comments && (!isLiveMap || mode !== "view" || view.z >= 0.4) && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
