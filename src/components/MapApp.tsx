@@ -606,7 +606,7 @@ export default function MapApp() {
         },
         body: JSON.stringify({
           password,
-          map_data: data,
+          map_data: toVectorMap(data),
           map_name: mapName,
           map_description: mapDescription,
         }),
@@ -632,7 +632,7 @@ export default function MapApp() {
         setData(next); setViewerReferenceNationId(next.playerNationId ?? ""); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
         setSel(null); setBrush(null); setDraft([]); setFilter("todas"); setTool("mover"); setMode("view"); setPendingViewer(false); setNotice(t.imported); window.setTimeout(fitMap, 0); return;
       }
-      setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { setIsLiveMap(false); setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap(); setNotice(t.imported); } }); return;
+      setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { setIsLiveMap(false); setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions((parsed["versions"] as MapVersion[]).map(version => ({ ...version, data: readMap(version.data) }))); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap(); setNotice(t.imported); } }); return;
     } catch { setNotice(t.invalidFile); }
   };
 
