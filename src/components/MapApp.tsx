@@ -65,6 +65,7 @@ export default function MapApp() {
   const [mode, setMode] = useState<"home" | "edit" | "view">("home");
   const [homeTheme, setHomeTheme] = useState<HomeTheme>("atlas");
   const [pendingViewer, setPendingViewer] = useState(false);
+  const [isLiveMap, setIsLiveMap] = useState(false);
   const [data, setData] = useState<Data>(empty);
   const [fullscreen, setFullscreen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -574,6 +575,7 @@ export default function MapApp() {
       setMapName(published.map_name || "WorldForge Maps");
       setMapDescription(published.map_description || "");
       setViewerReferenceNationId(next.playerNationId ?? "");
+       setIsLiveMap(true);
       setSel(null);
       setBrush(null);
       setDraft([]);
@@ -625,10 +627,11 @@ export default function MapApp() {
       const next = readMap(parsed["map"] ?? parsed);
       const meta = parsed["metadata"] as { name?: string; description?: string } | undefined;
       if (mode === "home" || mode === "view" || pendingViewer) {
+        setIsLiveMap(false);
         setData(next); setViewerReferenceNationId(next.playerNationId ?? ""); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description);
         setSel(null); setBrush(null); setDraft([]); setFilter("todas"); setTool("mover"); setMode("view"); setPendingViewer(false); setNotice(t.imported); window.setTimeout(fitMap, 0); return;
       }
-      setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap(); setNotice(t.imported); } }); return;
+      setDialog({ type: "confirm", title: t.importWorld, message: t.confirmImport, onSubmit: () => { setIsLiveMap(false); setData(next); if (typeof meta?.name === "string") setMapName(meta.name); if (typeof meta?.description === "string") setMapDescription(meta.description); if (Array.isArray(parsed["versions"])) setVersions(parsed["versions"] as MapVersion[]); setSel(null); setBrush(null); setDraft([]); setFilter("todas"); fitMap(); setNotice(t.imported); } }); return;
     } catch { setNotice(t.invalidFile); }
   };
 
@@ -647,10 +650,23 @@ export default function MapApp() {
     setSelectedRegionId(region.id); setRegionName(""); setShowRegions(true); setTool("regiao");
     setNotice(tx("Região criada. Pinte as células do país para delimitá-la.", "Region created. Paint cells belonging to this country to delimit it.", "Región creada. Pinta celdas de este país para delimitarla."));
   };
-  const regionTerritories = useMemo(() => (data.regions ?? []).map(region => {
-    const keys = Object.entries(data.regionTiles ?? {}).filter(([key, id]) => id === region.id && data.tiles[key] === region.nationId).map(([key]) => key);
-    return { region, keys, path: territoryPath(keys, data.smooth) };
-  }), [data.regions, data.regionTiles, data.tiles, data.smooth]);
+  const regionTerritories = useMemo(() => {
+    const regionById = new Map((data.regions ?? []).map(region => [region.id, region] as const));
+    const keysByRegion = new Map<string, string[]>();
+    for (const [key, regionId] of Object.entries(data.regionTiles ?? {})) {
+      const region = regionById.get(regionId);
+      if (!region || data.tiles[key] !== region.nationId) continue;
+      const keys = keysByRegion.get(regionId) ?? [];
+      keys.push(key);
+      keysByRegion.set(regionId, keys);
+    }
+    return (data.regions ?? []).map(region => {
+      const keys = keysByRegion.get(region.id) ?? [];
+      let sx = 0, sy = 0;
+      for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
+      return { region, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
+    });
+  }, [data.regions, data.regionTiles, data.tiles, data.smooth]);
   const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
   const worldBalance = worldStats.income - worldStats.expenses;
   const foodBalance = worldStats.foodProduction - worldStats.foodConsumption;
@@ -682,10 +698,20 @@ export default function MapApp() {
     if (filter === "inimigas") return relation === "inimiga" || (n.enemyIds ?? []).includes(referenceId) || data.nations.some(other => other.id === referenceId && (other.enemyIds ?? []).includes(n.id));
     return relation === filter;
   });
-  const territories = useMemo(() => data.nations.map(n => {
-    const keys = Object.entries(data.tiles).filter(([, id]) => id === n.id).map(([key]) => key);
-    return { nation: n, keys, path: territoryPath(keys, data.smooth) };
-  }), [data.nations, data.tiles, data.smooth]);
+  const territories = useMemo(() => {
+    const keysByNation = new Map<string, string[]>();
+    for (const [key, nationId] of Object.entries(data.tiles)) {
+      const keys = keysByNation.get(nationId) ?? [];
+      keys.push(key);
+      keysByNation.set(nationId, keys);
+    }
+    return data.nations.map(nation => {
+      const keys = keysByNation.get(nation.id) ?? [];
+      let sx = 0, sy = 0;
+      for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
+      return { nation, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
+    });
+  }, [data.nations, data.tiles, data.smooth]);
   const tutorialSteps = [
     { title: tx("1. Navegação", "1. Navigation", "1. Navegación"), body: tx("Arraste o mapa com a ferramenta Mover / Selecionar. Use a roda do mouse; no celular, use dois dedos.", "Drag the map with Move / Select. Use the mouse wheel; on mobile, use two fingers.", "Arrastra el mapa con Mover / Seleccionar. Usa la rueda del ratón; en el móvil, usa dos dedos.") },
     { title: tx("2. Países e territórios", "2. Nations and territories", "2. Naciones y territorios"), body: tx("Crie uma nação no painel lateral, escolha a cor e use Pintar território ou Preencher área. O filtro de relações e as camadas ajudam a isolar informações.", "Create a nation in the side panel, choose a color, then use Paint Territory or Fill Area. Relation filters and layers help isolate information.", "Crea una nación en el panel lateral, elige un color y usa Pintar territorio o Rellenar área. Los filtros y las capas ayudan a aislar información.") },
@@ -892,9 +918,9 @@ export default function MapApp() {
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {layers.territories && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
           {showRegions && layers.territories && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={`region-${region.id}`} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={data.regionOpacity ?? 0.45} stroke={region.color} strokeOpacity={data.regionOpacity ?? 0.45} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
-          {data.showGrid && layers.grid && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
+          {data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= 0.35) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
-          {layers.comments && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
+          {layers.comments && (!isLiveMap || mode !== "view" || view.z >= 0.4) && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
           {layers.routes && data.lines.map(l => (
             <polyline key={l.id} points={l.points.map(p => p.join(",")).join(" ")} fill="none"
               className={l.type === "estrada" ? "stroke-foreground" : "stroke-chart-3"} strokeWidth={selLine?.id === l.id ? 5 : 3}
@@ -907,7 +933,7 @@ export default function MapApp() {
           {layers.markers && data.markers.map(m => {
             const isCapital = m.type === "capital";
             // Capitais aparecem com zoom a partir de 0.35; outras cidades/portos/fortes só aparecem de perto (zoom >= 0.75)
-            const isVisible = isCapital ? view.z >= 0.2 : view.z >= 0.25;
+            const isVisible = isLiveMap && mode === "view" ? (isCapital ? view.z >= 0.16 : view.z >= 0.38) : (isCapital ? view.z >= 0.2 : view.z >= 0.25);
             if (!isVisible) return null;
             const r = isCapital ? 9 : 6;
 
@@ -924,11 +950,10 @@ export default function MapApp() {
           })}
 
           {/* Nomes dos países com tamanho dinâmico pelo território e limite de zoom */}
-          {showRegionNames && layers.labels && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, keys }) => { let sx = 0, sy = 0; for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += x; sy += y; } const x = (sx / keys.length + 0.5) * CELL, y = (sy / keys.length + 0.5) * CELL; return <text key={`region-label-${region.id}`} x={x} y={y} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>; })}
-          {showNationNames && layers.labels && filter !== "alianças" && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(({ nation: n, keys: ks }) => {
-            if (!ks.length) return null;
-            let sx = 0, sy = 0; ks.forEach(k => { const [x = 0, y = 0] = k.split(",").map(Number); sx += x; sy += y; });
-            const x = (sx / ks.length + 0.5) * CELL, y = (sy / ks.length + 0.5) * CELL;
+          {showRegionNames && layers.labels && (!isLiveMap || mode !== "view" || view.z >= 0.45) && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0 && (!isLiveMap || mode !== "view" || item.keys.length >= 4)).map(({ region, keys, centerX, centerY }) => <text key={`region-label-${region.id}`} x={centerX} y={centerY} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>)}
+          {showNationNames && layers.labels && filter !== "alianças" && (!isLiveMap || mode !== "view" || view.z >= 0.2) && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(({ nation: n, keys: ks, centerX, centerY }) => {
+            if (!ks.length || (isLiveMap && mode === "view" && view.z < 0.35 && ks.length < 20)) return null;
+            const x = centerX, y = centerY;
 
             // Escala conforme tamanho da área territorial (com teto para não ficar gigante)
             const area = ks.length;
@@ -944,7 +969,7 @@ export default function MapApp() {
               </g>
             );
           })}
-          {layers.labels && filter === "alianças" && alliances.map(a => { const cells = Object.entries(data.tiles).filter(([, id]) => a.nationIds.includes(id)).map(([key]) => key); if (!cells.length) return null; let sx = 0, sy = 0; for (const key of cells) { const [cx = 0, cy = 0] = key.split(",").map(Number); sx += (cx + 0.5) * CELL; sy += (cy + 0.5) * CELL; } const x = sx / cells.length, y = sy / cells.length; return <g key={a.id} pointerEvents="none">{a.image && <image href={a.image} x={x - 24} y={y - 54} width={48} height={32} preserveAspectRatio="xMidYMid meet" />}<text x={x} y={y} textAnchor="middle" fontSize={Math.max(12, Math.min(28, 10 + Math.sqrt(cells.length) * 0.12))} className="fill-foreground font-display uppercase" paintOrder="stroke" stroke="var(--background)" strokeWidth={4}>{a.name}</text></g>; })}
+          {layers.labels && filter === "alianças" && alliances.map(a => { const members = territories.filter(t => a.nationIds.includes(t.nation.id) && t.keys.length > 0); const count = members.reduce((sum, t) => sum + t.keys.length, 0); if (!count) return null; const x = members.reduce((sum, t) => sum + t.centerX * t.keys.length, 0) / count, y = members.reduce((sum, t) => sum + t.centerY * t.keys.length, 0) / count; return <g key={a.id} pointerEvents="none">{a.image && <image href={a.image} x={x - 24} y={y - 54} width={48} height={32} preserveAspectRatio="xMidYMid meet" />}<text x={x} y={y} textAnchor="middle" fontSize={Math.max(12, Math.min(28, 10 + Math.sqrt(count) * 0.12))} className="fill-foreground font-display uppercase" paintOrder="stroke" stroke="var(--background)" strokeWidth={4}>{a.name}</text></g>; })}
           {cursorPos && (tool === "pintar" || tool === "apagar") && (
             <circle cx={cursorPos.x} cy={cursorPos.y}
               r={Math.max(CELL / 2, (brushSize - 0.5) * CELL)}
