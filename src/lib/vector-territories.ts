@@ -87,13 +87,17 @@ export function tilesToVectorAreas(
   regionTiles: Record<string, string> = {},
 ): VectorArea[] {
   const groups = new Map<string, string[]>();
+  const addToGroup = (kind: VectorArea["kind"], id: string, key: string) => {
+    const groupKey = `${kind}:${id}`;
+    let keys = groups.get(groupKey);
+    if (!keys) { keys = []; groups.set(groupKey, keys); }
+    keys.push(key);
+  };
   for (const [key, id] of Object.entries(tiles)) {
-    if (!/^\d+,\d+$/.test(key) || typeof id !== "string" || !id) continue;
-    groups.set(`nation:${id}`, [...(groups.get(`nation:${id}`) ?? []), key]);
+    if (/^\\d+,\\d+$/.test(key) && typeof id === "string" && id) addToGroup("nation", id, key);
   }
   for (const [key, id] of Object.entries(regionTiles)) {
-    if (!/^\d+,\d+$/.test(key) || typeof id !== "string" || !id || !tiles[key]) continue;
-    groups.set(`region:${id}`, [...(groups.get(`region:${id}`) ?? []), key]);
+    if (/^\\d+,\\d+$/.test(key) && typeof id === "string" && id && tiles[key]) addToGroup("region", id, key);
   }
 
   const areas: VectorArea[] = [];
@@ -131,10 +135,16 @@ export function vectorAreasToTiles(areas: VectorArea[]) {
     const validRings = area.rings.filter(ring => Array.isArray(ring) && ring.length >= 4 &&
       ring.every(point => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite)));
     if (!validRings.length || !area.id || (area.kind !== "nation" && area.kind !== "region")) continue;
-    const minX = Math.max(0, Math.floor(Math.min(...validRings.flatMap(r => r.map(p => p[0])))));
-    const maxX = Math.min(MAP_COLS - 1, Math.ceil(Math.max(...validRings.flatMap(r => r.map(p => p[0])))) - 1);
-    const minY = Math.max(0, Math.floor(Math.min(...validRings.flatMap(r => r.map(p => p[1])))));
-    const maxY = Math.min(MAP_ROWS - 1, Math.ceil(Math.max(...validRings.flatMap(r => r.map(p => p[1])))) - 1);
+    let lowX = Infinity, highX = -Infinity, lowY = Infinity, highY = -Infinity;
+    for (const ring of validRings) for (const point of ring) {
+      lowX = Math.min(lowX, point[0]); highX = Math.max(highX, point[0]);
+      lowY = Math.min(lowY, point[1]); highY = Math.max(highY, point[1]);
+    }
+    if (!Number.isFinite(lowX) || !Number.isFinite(lowY)) continue;
+    const minX = Math.max(0, Math.floor(lowX));
+    const maxX = Math.min(MAP_COLS - 1, Math.ceil(highX) - 1);
+    const minY = Math.max(0, Math.floor(lowY));
+    const maxY = Math.min(MAP_ROWS - 1, Math.ceil(highY) - 1);
     for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
       const inside = validRings.reduce((value, ring) => pointInRing(x + 0.5, y + 0.5, ring) ? !value : value, false);
       if (!inside) continue;
