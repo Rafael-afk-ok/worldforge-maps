@@ -7,6 +7,18 @@ import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://luctonaqnzzqhcuwjkht.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
 
+// Live-map level-of-detail thresholds. These only affect the published Ao Vivo viewer.
+const LIVE_MAP_ZOOM = {
+  grid: 0.35,
+  comments: 0.4,
+  capitalMarkers: 0.16,
+  otherMarkers: 0.38,
+  regionLabels: 0.45,
+  countryDetail: 0.35,
+  countryLabelMinCells: 20,
+  regionLabelMinCells: 4,
+} as const;
+
 type Relation = "propria" | "amigavel" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; relations?: Record<string, Relation> | undefined; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
 type Region = { id: string; name: string; nationId: string; color: string };
@@ -921,9 +933,9 @@ export default function MapApp() {
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {layers.territories && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; const vectorEditor = mode === "edit"; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={vectorEditor ? (selNation?.id === t.nation.id ? 0.92 : 1) : (selNation?.id === t.nation.id ? 0.85 : 0.6)} stroke={vectorEditor ? "var(--background)" : "none"} strokeWidth={vectorEditor ? 1 : 0} strokeLinejoin="round" vectorEffect={vectorEditor ? "non-scaling-stroke" : undefined} />; })}
           {showRegions && layers.territories && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={`region-${region.id}`} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={data.regionOpacity ?? 0.45} stroke={region.color} strokeOpacity={data.regionOpacity ?? 0.45} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
-          {mode !== "edit" && data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= 0.35) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
+          {mode !== "edit" && data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= LIVE_MAP_ZOOM.grid) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
-          {layers.comments && (!isLiveMap || mode !== "view" || view.z >= 0.4) && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
+          {layers.comments && (!isLiveMap || mode !== "view" || view.z >= LIVE_MAP_ZOOM.comments) && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
           {layers.routes && data.lines.map(l => (
             <polyline key={l.id} points={l.points.map(p => p.join(",")).join(" ")} fill="none"
               className={l.type === "estrada" ? "stroke-foreground" : "stroke-chart-3"} strokeWidth={selLine?.id === l.id ? 5 : 3}
@@ -936,7 +948,7 @@ export default function MapApp() {
           {layers.markers && data.markers.map(m => {
             const isCapital = m.type === "capital";
             // Capitais aparecem com zoom a partir de 0.35; outras cidades/portos/fortes só aparecem de perto (zoom >= 0.75)
-            const isVisible = isLiveMap && mode === "view" ? (isCapital ? view.z >= 0.16 : view.z >= 0.38) : (isCapital ? view.z >= 0.2 : view.z >= 0.25);
+            const isVisible = isLiveMap && mode === "view" ? (isCapital ? view.z >= LIVE_MAP_ZOOM.capitalMarkers : view.z >= LIVE_MAP_ZOOM.otherMarkers) : (isCapital ? view.z >= 0.2 : view.z >= 0.25);
             if (!isVisible) return null;
             const r = isCapital ? 9 : 6;
 
@@ -953,9 +965,9 @@ export default function MapApp() {
           })}
 
           {/* Nomes dos países com tamanho dinâmico pelo território e limite de zoom */}
-          {showRegionNames && layers.labels && (!isLiveMap || mode !== "view" || view.z >= 0.45) && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0 && (!isLiveMap || mode !== "view" || item.keys.length >= 4)).map(({ region, keys, centerX, centerY }) => <text key={`region-label-${region.id}`} x={centerX} y={centerY} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>)}
+          {showRegionNames && layers.labels && (!isLiveMap || mode !== "view" || view.z >= LIVE_MAP_ZOOM.regionLabels) && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0 && (!isLiveMap || mode !== "view" || item.keys.length >= LIVE_MAP_ZOOM.regionLabelMinCells)).map(({ region, keys, centerX, centerY }) => <text key={`region-label-${region.id}`} x={centerX} y={centerY} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>)}
           {showNationNames && layers.labels && filter !== "alianças" && (!isLiveMap || mode !== "view" || view.z >= 0.2) && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(({ nation: n, keys: ks, centerX, centerY }) => {
-            if (!ks.length || (isLiveMap && mode === "view" && view.z < 0.35 && ks.length < 20)) return null;
+            if (!ks.length || (isLiveMap && mode === "view" && view.z < LIVE_MAP_ZOOM.countryDetail && ks.length < LIVE_MAP_ZOOM.countryLabelMinCells)) return null;
             const x = centerX, y = centerY;
 
             // Escala conforme tamanho da área territorial (com teto para não ficar gigante)
