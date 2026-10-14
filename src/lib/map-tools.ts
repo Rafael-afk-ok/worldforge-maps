@@ -57,15 +57,15 @@ export function floodFill(
   visited.add(startKey);
 
   while (head < tail && tail < maxCells) {
-    const x = queueX[head];
-    const y = queueY[head];
+    const x = queueX[head] ?? 0;
+    const y = queueY[head] ?? 0;
     head++;
 
     const key = `${x},${y}`;
     if (fillId) nextTiles[key] = fillId;
     else delete nextTiles[key];
 
-    const neighbors = [
+    const neighbors: [number, number][] = [
       [x + 1, y],
       [x - 1, y],
       [x, y + 1],
@@ -73,7 +73,7 @@ export function floodFill(
     ];
 
     for (let i = 0; i < 4; i++) {
-      const [nx, ny] = neighbors[i];
+      const [nx, ny] = neighbors[i] ?? [0, 0];
       if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
         const nKey = `${nx},${ny}`;
         if (!visited.has(nKey)) {

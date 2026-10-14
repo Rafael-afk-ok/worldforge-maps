@@ -42,7 +42,7 @@ type Tool = "mover" | "pintar" | "balde" | "apagar" | "regiao" | "comentario" | 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
 const KEY = "atlas-nacoes-v1";
 const uid = () => Math.random().toString(36).slice(2, 9);
-const empty: Data = { cellSize: MAP_CELL, nations: [], regions: [], regionTiles: {}, regionOpacity: 0.45, playerNationId: undefined, tiles: {}, lines: [], comments: [], alliances: [], wars: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
+const empty: Data = { cellSize: MAP_CELL, nations: [], regions: [], regionTiles: {}, regionOpacity: 0.45, playerNationId: undefined, tiles: {}, markers: [], lines: [], comments: [], alliances: [], wars: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
 const RELS: Relation[] = ["propria", "amigavel", "neutra", "inimiga"];
 const ICON: Record<MarkerType, string> = { capital: "★", cidade: "●", forte: "▲", porto: "⚓" };
 const SHAPES: { id: MarkerShape; label: string }[] = [{ id: "circle", label: "Círculo" }, { id: "square", label: "Quadrado" }, { id: "triangle", label: "Triângulo" }, { id: "star", label: "Estrela" }, { id: "diamond", label: "Losango" }, { id: "hexagon", label: "Hexágono" }, { id: "cross", label: "Cruz" }];
@@ -448,7 +448,7 @@ export default function MapApp() {
     ctx.fillStyle = "#e2e8f0"; ctx.fillRect(ox, oy, mapWidth, mapHeight);
     const drawLayers = () => {
       for (const [key, id] of Object.entries(data.tiles)) {
-        const [x, y] = key.split(",").map(Number), nation = data.nations.find(n => n.id === id);
+        const [x = 0, y = 0] = key.split(",").map(Number), nation = data.nations.find(n => n.id === id);
         if (!nation) continue;
         ctx.fillStyle = nation.color.startsWith("hsl") ? toHex(nation.color) : nation.color;
         ctx.fillRect(ox + x * CELL * sx, oy + y * CELL * sy, CELL * sx + 0.4, CELL * sy + 0.4);
@@ -491,7 +491,7 @@ export default function MapApp() {
         const cells = Object.entries(data.tiles).filter(([, id]) => id === nation.id).map(([key]) => key);
         if (!cells.length) continue;
         let x = 0, y = 0;
-        for (const key of cells) { const [cx, cy] = key.split(",").map(Number); x += (cx + 0.5) * CELL; y += (cy + 0.5) * CELL; }
+        for (const key of cells) { const [cx = 0, cy = 0] = key.split(",").map(Number); x += (cx + 0.5) * CELL; y += (cy + 0.5) * CELL; }
         x = ox + x / cells.length * sx; y = oy + y / cells.length * sy;
         ctx.font = "bold 20px Arial"; ctx.lineWidth = 4; ctx.strokeStyle = "#f8fafc"; ctx.strokeText(nation.name, x, y); ctx.fillStyle = "#0f172a"; ctx.fillText(nation.name, x, y);
       }
@@ -853,7 +853,7 @@ export default function MapApp() {
               </g>
             );
           })}
-          {layers.labels && filter === "alianças" && alliances.map(a => { const cells = Object.entries(data.tiles).filter(([, id]) => a.nationIds.includes(id)).map(([key]) => key); if (!cells.length) return null; let sx = 0, sy = 0; for (const key of cells) { const [cx, cy] = key.split(",").map(Number); sx += (cx + 0.5) * CELL; sy += (cy + 0.5) * CELL; } const x = sx / cells.length, y = sy / cells.length; return <g key={a.id} pointerEvents="none">{a.image && <image href={a.image} x={x - 24} y={y - 54} width={48} height={32} preserveAspectRatio="xMidYMid meet" />}<text x={x} y={y} textAnchor="middle" fontSize={Math.max(12, Math.min(28, 10 + Math.sqrt(cells.length) * 0.12))} className="fill-foreground font-display uppercase" paintOrder="stroke" stroke="var(--background)" strokeWidth={4}>{a.name}</text></g>; })}
+          {layers.labels && filter === "alianças" && alliances.map(a => { const cells = Object.entries(data.tiles).filter(([, id]) => a.nationIds.includes(id)).map(([key]) => key); if (!cells.length) return null; let sx = 0, sy = 0; for (const key of cells) { const [cx = 0, cy = 0] = key.split(",").map(Number); sx += (cx + 0.5) * CELL; sy += (cy + 0.5) * CELL; } const x = sx / cells.length, y = sy / cells.length; return <g key={a.id} pointerEvents="none">{a.image && <image href={a.image} x={x - 24} y={y - 54} width={48} height={32} preserveAspectRatio="xMidYMid meet" />}<text x={x} y={y} textAnchor="middle" fontSize={Math.max(12, Math.min(28, 10 + Math.sqrt(cells.length) * 0.12))} className="fill-foreground font-display uppercase" paintOrder="stroke" stroke="var(--background)" strokeWidth={4}>{a.name}</text></g>; })}
           {cursorPos && (tool === "pintar" || tool === "apagar") && (
             <circle cx={cursorPos.x} cy={cursorPos.y}
               r={Math.max(CELL / 2, (brushSize - 0.5) * CELL)}
