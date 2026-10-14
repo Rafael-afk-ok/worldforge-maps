@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, useDeferredValue } from "react";
 import { Button } from "@/components/ui/button";
 import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
@@ -650,12 +650,15 @@ export default function MapApp() {
     setSelectedRegionId(region.id); setRegionName(""); setShowRegions(true); setTool("regiao");
     setNotice(tx("Região criada. Pinte as células do país para delimitá-la.", "Region created. Paint cells belonging to this country to delimit it.", "Región creada. Pinta celdas de este país para delimitarla."));
   };
+  // Deferir os dados usados na geometria evita reconstruir todos os contornos a cada movimento do pincel.
+  const renderTiles = useDeferredValue(data.tiles);
+  const renderRegionTiles = useDeferredValue(data.regionTiles);
   const regionTerritories = useMemo(() => {
     const regionById = new Map((data.regions ?? []).map(region => [region.id, region] as const));
     const keysByRegion = new Map<string, string[]>();
-    for (const [key, regionId] of Object.entries(data.regionTiles ?? {})) {
+    for (const [key, regionId] of Object.entries(renderRegionTiles ?? {})) {
       const region = regionById.get(regionId);
-      if (!region || data.tiles[key] !== region.nationId) continue;
+      if (!region || renderTiles[key] !== region.nationId) continue;
       const keys = keysByRegion.get(regionId) ?? [];
       keys.push(key);
       keysByRegion.set(regionId, keys);
@@ -666,7 +669,7 @@ export default function MapApp() {
       for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
       return { region, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
     });
-  }, [data.regions, data.regionTiles, data.tiles, data.smooth]);
+  }, [data.regions, renderRegionTiles, renderTiles, data.smooth]);
   const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
   const worldBalance = worldStats.income - worldStats.expenses;
   const foodBalance = worldStats.foodProduction - worldStats.foodConsumption;
@@ -700,7 +703,7 @@ export default function MapApp() {
   });
   const territories = useMemo(() => {
     const keysByNation = new Map<string, string[]>();
-    for (const [key, nationId] of Object.entries(data.tiles)) {
+    for (const [key, nationId] of Object.entries(renderTiles)) {
       const keys = keysByNation.get(nationId) ?? [];
       keys.push(key);
       keysByNation.set(nationId, keys);
@@ -711,7 +714,7 @@ export default function MapApp() {
       for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
       return { nation, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
     });
-  }, [data.nations, data.tiles, data.smooth]);
+  }, [data.nations, renderTiles, data.smooth]);
   const tutorialSteps = [
     { title: tx("1. Navegação", "1. Navigation", "1. Navegación"), body: tx("Arraste o mapa com a ferramenta Mover / Selecionar. Use a roda do mouse; no celular, use dois dedos.", "Drag the map with Move / Select. Use the mouse wheel; on mobile, use two fingers.", "Arrastra el mapa con Mover / Seleccionar. Usa la rueda del ratón; en el móvil, usa dos dedos.") },
     { title: tx("2. Países e territórios", "2. Nations and territories", "2. Naciones y territorios"), body: tx("Crie uma nação no painel lateral, escolha a cor e use Pintar território ou Preencher área. O filtro de relações e as camadas ajudam a isolar informações.", "Create a nation in the side panel, choose a color, then use Paint Territory or Fill Area. Relation filters and layers help isolate information.", "Crea una nación en el panel lateral, elige un color y usa Pintar territorio o Rellenar área. Los filtros y las capas ayudan a aislar información.") },
