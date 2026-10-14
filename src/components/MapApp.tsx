@@ -126,6 +126,9 @@ export default function MapApp() {
   const importRef = useRef<HTMLInputElement>(null);
   const lastPaint = useRef<[number, number] | null>(null);
   const pendingPaint = useRef(new Map<string, { nationId: string | null; regionId: string | null }>());
+  const previewFrame = useRef<number | null>(null);
+  const regionById = useMemo(() => new Map((data.regions ?? []).map(region => [region.id, region] as const)), [data.regions]);
+  const selectedRegion = useMemo(() => (data.regions ?? []).find(region => region.id === selectedRegionId), [data.regions, selectedRegionId]);
   const [previewPaintCells, setPreviewPaintCells] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [tool, setTool] = useState<Tool>("mover");
@@ -265,13 +268,14 @@ export default function MapApp() {
     const cells = strokeCells(lastPaint.current ?? current, current, brushSize - 1);
     lastPaint.current = current;
     const pending = pendingPaint.current;
-    const regionById = new Map((data.regions ?? []).map(region => [region.id, region] as const));
+    const tiles = data.tiles;
+    const regionTiles = data.regionTiles ?? {};
     for (const cell of cells) {
-      const currentNation = pending.has(cell) ? pending.get(cell)!.nationId : (data.tiles[cell] ?? null);
-      const currentRegion = pending.has(cell) ? pending.get(cell)!.regionId : ((data.regionTiles ?? {})[cell] ?? null);
+      const pendingValue = pending.get(cell);
+      const currentNation = pendingValue ? pendingValue.nationId : (tiles[cell] ?? null);
+      const currentRegion = pendingValue ? pendingValue.regionId : (regionTiles[cell] ?? null);
       if (tool === "regiao") {
-        const region = (data.regions ?? []).find(item => item.id === selectedRegionId);
-        if (region && currentNation === region.nationId) pending.set(cell, { nationId: currentNation, regionId: region.id });
+        if (selectedRegion && currentNation === selectedRegion.nationId) pending.set(cell, { nationId: currentNation, regionId: selectedRegion.id });
       } else if (tool === "apagar") {
         pending.set(cell, { nationId: null, regionId: null });
       } else if (brush) {
@@ -279,8 +283,17 @@ export default function MapApp() {
         pending.set(cell, { nationId: brush, regionId: assignedRegion && assignedRegion.nationId !== brush ? null : currentRegion });
       }
     }
-    setPreviewPaintCells(Array.from(pending.keys()));
-  }, [tool, brush, data, brushSize, selectedRegionId]);
+    if (previewFrame.current === null) {
+      previewFrame.current = requestAnimationFrame(() => {
+        previewFrame.current = null;
+        setPreviewPaintCells(Array.from(pendingPaint.current.keys()));
+      });
+    }
+  }, [tool, brush, data.tiles, data.regionTiles, brushSize, selectedRegion, regionById]);
+
+  useEffect(() => () => {
+    if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current);
+  }, []);
 
   const finishPaint = () => {
     const pending = pendingPaint.current;
@@ -296,6 +309,10 @@ export default function MapApp() {
       pushHistory(nextData);
     }
     pending.clear();
+    if (previewFrame.current !== null) {
+      cancelAnimationFrame(previewFrame.current);
+      previewFrame.current = null;
+    }
     setPreviewPaintCells([]);
   };
   const stopDrag = () => {
@@ -367,7 +384,7 @@ export default function MapApp() {
         const cellKey = c ? `${c[0]},${c[1]}` : null;
         const n = cellKey && data.tiles[cellKey];
         const nation = n ? nationById(n) : undefined;
-        setSel(nation && visibleNations.some(item => item.id === nation.id) ? { kind: "nation", id: nation.id } : null);
+        setSel(nation && visibleNationIds.has(nation.id) ? { kind: "nation", id: nation.id } : null);
       }
       return;
     }
@@ -712,20 +729,26 @@ export default function MapApp() {
     if (filter === "inimigas") return relation === "inimiga" || (n.enemyIds ?? []).includes(referenceId) || data.nations.some(other => other.id === referenceId && (other.enemyIds ?? []).includes(n.id));
     return relation === filter;
   });
-  const territories = useMemo(() => {
+  const visibleNationIds = new Set(visibleNations.map(nation => nation.id));
+  const territoryGeometry = useMemo(() => {
     const keysByNation = new Map<string, string[]>();
     for (const [key, nationId] of Object.entries(data.tiles)) {
       const keys = keysByNation.get(nationId) ?? [];
       keys.push(key);
       keysByNation.set(nationId, keys);
     }
-    return data.nations.map(nation => {
-      const keys = keysByNation.get(nation.id) ?? [];
+    const geometry = new Map<string, { keys: string[]; centerX: number; centerY: number; path: string }>();
+    for (const [nationId, keys] of keysByNation) {
       let sx = 0, sy = 0;
       for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
-      return { nation, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
-    });
-  }, [data.nations, data.tiles, data.smooth]);
+      geometry.set(nationId, { keys, centerX: sx / keys.length, centerY: sy / keys.length, path: keys.length ? territoryPath(keys, data.smooth) : "" });
+    }
+    return geometry;
+  }, [data.tiles, data.smooth]);
+  const territories = useMemo(() => data.nations.map(nation => ({
+    nation,
+    ...(territoryGeometry.get(nation.id) ?? { keys: [], centerX: 0, centerY: 0, path: "" }),
+  })), [data.nations, territoryGeometry]);
   const tutorialSteps = [
     { title: tx("1. Navegação", "1. Navigation", "1. Navegación"), body: tx("Arraste o mapa com a ferramenta Mover / Selecionar. Use a roda do mouse; no celular, use dois dedos.", "Drag the map with Move / Select. Use the mouse wheel; on mobile, use two fingers.", "Arrastra el mapa con Mover / Seleccionar. Usa la rueda del ratón; en el móvil, usa dos dedos.") },
     { title: tx("2. Países e territórios", "2. Nations and territories", "2. Naciones y territorios"), body: tx("Crie uma nação no painel lateral, escolha a cor e use Pintar território ou Preencher área. O filtro de relações e as camadas ajudam a isolar informações.", "Create a nation in the side panel, choose a color, then use Paint Territory or Fill Area. Relation filters and layers help isolate information.", "Crea una nación en el panel lateral, elige un color y usa Pintar territorio o Rellenar área. Los filtros y las capas ayudan a aislar información.") },
@@ -930,8 +953,8 @@ export default function MapApp() {
           <defs><clipPath id="map-bounds"><rect width={W} height={H} /></clipPath></defs>
           {data.bg && layers.background && <g clipPath="url(#map-bounds)"><image href={data.bg} width={W} height={H} preserveAspectRatio={data.bgFit === "stretch" ? "none" : data.bgFit === "cover" ? "xMidYMid slice" : "xMidYMid meet"} opacity={data.bgOpacity} transform={`translate(${data.bgX + W / 2},${data.bgY + H / 2}) rotate(${data.bgRotation}) scale(${data.bgScale}) translate(${-W / 2},${-H / 2})`} pointerEvents="none" /></g>}
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
-          {layers.territories && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
-          {showRegions && layers.territories && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={`region-${region.id}`} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={data.regionOpacity ?? 0.45} stroke={region.color} strokeOpacity={data.regionOpacity ?? 0.45} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
+          {layers.territories && territories.filter(t => visibleNationIds.has(t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
+          {showRegions && layers.territories && regionTerritories.filter(item => visibleNationIds.has(item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={`region-${region.id}`} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={data.regionOpacity ?? 0.45} stroke={region.color} strokeOpacity={data.regionOpacity ?? 0.45} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
           {previewPaintCells.map(cell => {
             const [x, y] = cell.split(",").map(Number);
             const pending = pendingPaint.current.get(cell);
@@ -972,8 +995,8 @@ export default function MapApp() {
           })}
 
           {/* Nomes dos países com tamanho dinâmico pelo território e limite de zoom */}
-          {showRegionNames && layers.labels && (!isLiveMap || mode !== "view" || view.z >= 0.45) && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0 && (!isLiveMap || mode !== "view" || item.keys.length >= 4)).map(({ region, keys, centerX, centerY }) => <text key={`region-label-${region.id}`} x={centerX} y={centerY} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>)}
-          {showNationNames && layers.labels && filter !== "alianças" && (!isLiveMap || mode !== "view" || view.z >= 0.2) && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(({ nation: n, keys: ks, centerX, centerY }) => {
+          {showRegionNames && layers.labels && (!isLiveMap || mode !== "view" || view.z >= 0.45) && regionTerritories.filter(item => visibleNationIds.has(item.region.nationId) && item.keys.length > 0 && (!isLiveMap || mode !== "view" || item.keys.length >= 4)).map(({ region, keys, centerX, centerY }) => <text key={`region-label-${region.id}`} x={centerX} y={centerY} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>)}
+          {showNationNames && layers.labels && filter !== "alianças" && (!isLiveMap || mode !== "view" || view.z >= 0.2) && territories.filter(t => visibleNationIds.has(t.nation.id)).map(({ nation: n, keys: ks, centerX, centerY }) => {
             if (!ks.length || (isLiveMap && mode === "view" && view.z < 0.35 && ks.length < 20)) return null;
             const x = centerX, y = centerY;
 
