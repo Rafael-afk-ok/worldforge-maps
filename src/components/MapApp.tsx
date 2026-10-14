@@ -93,11 +93,12 @@ export default function MapApp() {
   const [languageSetup, setLanguageSetup] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [viewerTab, setViewerTab] = useState<"nations" | "locations" | "diplomacy" | "compare" | "layers">("nations");
+  const [viewerTab, setViewerTab] = useState<"nations" | "regions" | "locations" | "diplomacy" | "compare" | "layers">("nations");
   const [viewerReferenceNationId, setViewerReferenceNationId] = useState("");
   const [viewerNationFilter, setViewerNationFilter] = useState<"todas" | "propria" | "amigavel" | "neutra" | "inimigas" | "alianças" | "guerras">("todas");
   const [viewerNationSearch, setViewerNationSearch] = useState("");
   const [viewerLocationSearch, setViewerLocationSearch] = useState("");
+  const [viewerRegionSearch, setViewerRegionSearch] = useState("");
   const [flagUrl, setFlagUrl] = useState("");
   const [markerPhotoUrl, setMarkerPhotoUrl] = useState("");
   const [mapName, setMapName] = useState("Meu mundo");
@@ -681,7 +682,7 @@ export default function MapApp() {
           </select>
         </label>
         <div className="grid grid-cols-2 gap-1" role="tablist" aria-label={tx("Abas de informações", "Information tabs", "Pestañas de información")}>
-          {([{id:"nations",label:tx("Nações","Nations","Naciones")},{id:"locations",label:tx("Localidades","Locations","Localidades")},{id:"diplomacy",label:tx("Diplomacia","Diplomacy","Diplomacia")},{id:"compare",label:tx("Comparação","Comparison","Comparación")},{id:"layers",label:tx("Camadas visíveis","Visible layers","Capas visibles")}] as const).map(tab => <Button key={tab.id} role="tab" aria-selected={viewerTab === tab.id} variant={viewerTab === tab.id ? "default" : "outline"} size="sm" className="h-auto min-h-9 whitespace-normal px-2 py-2 text-xs" onClick={() => setViewerTab(tab.id)}>{tab.label}</Button>)}
+          {([{id:"nations",label:tx("Países","Countries","Países")},{id:"regions",label:tx("Regiões","Regions","Regiones")},{id:"locations",label:tx("Localidades","Locations","Localidades")},{id:"diplomacy",label:tx("Diplomacia","Diplomacy","Diplomacia")},{id:"compare",label:tx("Comparação","Comparison","Comparación")},{id:"layers",label:tx("Camadas visíveis","Visible layers","Capas visibles")}] as const).map(tab => <Button key={tab.id} role="tab" aria-selected={viewerTab === tab.id} variant={viewerTab === tab.id ? "default" : "outline"} size="sm" className="h-auto min-h-9 whitespace-normal px-2 py-2 text-xs" onClick={() => setViewerTab(tab.id)}>{tab.label}</Button>)}
         </div>
         {viewerTab === "nations" && <section className="grid gap-3" role="tabpanel">
           <h3 className="font-semibold">{tx("Países e relações","Nations and relations","Países y relaciones")}</h3>
@@ -704,6 +705,19 @@ export default function MapApp() {
             {n.notes && <p className="mt-2 whitespace-pre-wrap text-sm opacity-80">{n.notes}</p>}
             <p className="mt-2 text-xs opacity-70">{tileCount(n.id)} {tx("territórios","territories","territorios")} · {tx("Vassalos","Vassals","Vasallos")}: {data.nations.filter(v=>v.overlordId===n.id).length}</p>
           </button>) : <p className="text-sm opacity-70">{t.noNations}</p>}
+        </section>}
+        {viewerTab === "regions" && <section className="grid gap-3" role="tabpanel">
+          <h3 className="font-semibold">{tx("Regiões do mapa","Map regions","Regiones del mapa")}</h3>
+          <input className="field" value={viewerRegionSearch} onChange={e => setViewerRegionSearch(e.target.value)} placeholder={tx("Buscar região pelo nome...","Search regions by name...","Buscar región por nombre...")} />
+          {(data.regions ?? []).filter(region => region.name.toLocaleLowerCase().includes(viewerRegionSearch.trim().toLocaleLowerCase())).length ? (data.regions ?? []).filter(region => region.name.toLocaleLowerCase().includes(viewerRegionSearch.trim().toLocaleLowerCase())).map(region => {
+            const owner = data.nations.find(nation => nation.id === region.nationId);
+            const tileTotal = Object.values(data.regionTiles ?? {}).filter(id => id === region.id).length;
+            return <article key={region.id} className="rounded-lg border border-current/15 p-3">
+              <div className="flex items-center gap-2"><span className="h-4 w-4 shrink-0 rounded-sm" style={{background:region.color}}/><strong className="min-w-0 flex-1">{region.name}</strong></div>
+              <p className="mt-1 text-sm opacity-80">{tx("País:","Country:","País:")} {owner?.name ?? tx("Sem país associado","No associated country","Sin país asociado")}</p>
+              <p className="mt-1 text-xs opacity-70">{tileTotal} {tx("células da região","region cells","celdas de región")}</p>
+            </article>;
+          }) : <p className="text-sm opacity-70">{tx("Nenhuma região encontrada.","No regions found.","No se encontraron regiones.")}</p>}
         </section>}
         {viewerTab === "locations" && <section className="grid gap-3" role="tabpanel">
           <h3 className="font-semibold">{tx("População, economia, notas e fotos","Population, economy, notes and photos","Población, economía, notas y fotos")}</h3>
