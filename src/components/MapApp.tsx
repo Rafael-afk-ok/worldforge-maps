@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo, useDeferredValue } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
@@ -6,18 +6,6 @@ import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://luctonaqnzzqhcuwjkht.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
-
-// Live-map level-of-detail thresholds. These only affect the published Ao Vivo viewer.
-const LIVE_MAP_ZOOM = {
-  grid: 0.35,
-  comments: 0.4,
-  capitalMarkers: 0.16,
-  otherMarkers: 0.38,
-  regionLabels: 0.45,
-  countryDetail: 0.35,
-  countryLabelMinCells: 20,
-  regionLabelMinCells: 4,
-} as const;
 
 type Relation = "propria" | "amigavel" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; relations?: Record<string, Relation> | undefined; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
@@ -662,15 +650,12 @@ export default function MapApp() {
     setSelectedRegionId(region.id); setRegionName(""); setShowRegions(true); setTool("regiao");
     setNotice(tx("Região criada. Pinte as células do país para delimitá-la.", "Region created. Paint cells belonging to this country to delimit it.", "Región creada. Pinta celdas de este país para delimitarla."));
   };
-  // Deferir os dados usados na geometria evita reconstruir todos os contornos a cada movimento do pincel.
-  const renderTiles = useDeferredValue(data.tiles);
-  const renderRegionTiles = useDeferredValue(data.regionTiles);
   const regionTerritories = useMemo(() => {
     const regionById = new Map((data.regions ?? []).map(region => [region.id, region] as const));
     const keysByRegion = new Map<string, string[]>();
-    for (const [key, regionId] of Object.entries(renderRegionTiles ?? {})) {
+    for (const [key, regionId] of Object.entries(data.regionTiles ?? {})) {
       const region = regionById.get(regionId);
-      if (!region || renderTiles[key] !== region.nationId) continue;
+      if (!region || data.tiles[key] !== region.nationId) continue;
       const keys = keysByRegion.get(regionId) ?? [];
       keys.push(key);
       keysByRegion.set(regionId, keys);
@@ -681,7 +666,7 @@ export default function MapApp() {
       for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
       return { region, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
     });
-  }, [data.regions, renderRegionTiles, renderTiles, data.smooth]);
+  }, [data.regions, data.regionTiles, data.tiles, data.smooth]);
   const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
   const worldBalance = worldStats.income - worldStats.expenses;
   const foodBalance = worldStats.foodProduction - worldStats.foodConsumption;
@@ -715,7 +700,7 @@ export default function MapApp() {
   });
   const territories = useMemo(() => {
     const keysByNation = new Map<string, string[]>();
-    for (const [key, nationId] of Object.entries(renderTiles)) {
+    for (const [key, nationId] of Object.entries(data.tiles)) {
       const keys = keysByNation.get(nationId) ?? [];
       keys.push(key);
       keysByNation.set(nationId, keys);
@@ -726,7 +711,7 @@ export default function MapApp() {
       for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
       return { nation, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
     });
-  }, [data.nations, renderTiles, data.smooth]);
+  }, [data.nations, data.tiles, data.smooth]);
   const tutorialSteps = [
     { title: tx("1. Navegação", "1. Navigation", "1. Navegación"), body: tx("Arraste o mapa com a ferramenta Mover / Selecionar. Use a roda do mouse; no celular, use dois dedos.", "Drag the map with Move / Select. Use the mouse wheel; on mobile, use two fingers.", "Arrastra el mapa con Mover / Seleccionar. Usa la rueda del ratón; en el móvil, usa dos dedos.") },
     { title: tx("2. Países e territórios", "2. Nations and territories", "2. Naciones y territorios"), body: tx("Crie uma nação no painel lateral, escolha a cor e use Pintar território ou Preencher área. O filtro de relações e as camadas ajudam a isolar informações.", "Create a nation in the side panel, choose a color, then use Paint Territory or Fill Area. Relation filters and layers help isolate information.", "Crea una nación en el panel lateral, elige un color y usa Pintar territorio o Rellenar área. Los filtros y las capas ayudan a aislar información.") },
@@ -931,11 +916,11 @@ export default function MapApp() {
           <defs><clipPath id="map-bounds"><rect width={W} height={H} /></clipPath></defs>
           {data.bg && layers.background && <g clipPath="url(#map-bounds)"><image href={data.bg} width={W} height={H} preserveAspectRatio={data.bgFit === "stretch" ? "none" : data.bgFit === "cover" ? "xMidYMid slice" : "xMidYMid meet"} opacity={data.bgOpacity} transform={`translate(${data.bgX + W / 2},${data.bgY + H / 2}) rotate(${data.bgRotation}) scale(${data.bgScale}) translate(${-W / 2},${-H / 2})`} pointerEvents="none" /></g>}
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
-          {layers.territories && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; const vectorEditor = mode === "edit"; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={vectorEditor ? (selNation?.id === t.nation.id ? 0.92 : 1) : (selNation?.id === t.nation.id ? 0.85 : 0.6)} stroke={vectorEditor ? "var(--background)" : "none"} strokeWidth={vectorEditor ? 1 : 0} strokeLinejoin="round" vectorEffect={vectorEditor ? "non-scaling-stroke" : undefined} />; })}
+          {layers.territories && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
           {showRegions && layers.territories && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={`region-${region.id}`} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={data.regionOpacity ?? 0.45} stroke={region.color} strokeOpacity={data.regionOpacity ?? 0.45} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
-          {mode !== "edit" && data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= LIVE_MAP_ZOOM.grid) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
+          {data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= 0.35) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
-          {layers.comments && (!isLiveMap || mode !== "view" || view.z >= LIVE_MAP_ZOOM.comments) && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
+          {layers.comments && (!isLiveMap || mode !== "view" || view.z >= 0.4) && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
           {layers.routes && data.lines.map(l => (
             <polyline key={l.id} points={l.points.map(p => p.join(",")).join(" ")} fill="none"
               className={l.type === "estrada" ? "stroke-foreground" : "stroke-chart-3"} strokeWidth={selLine?.id === l.id ? 5 : 3}
@@ -948,7 +933,7 @@ export default function MapApp() {
           {layers.markers && data.markers.map(m => {
             const isCapital = m.type === "capital";
             // Capitais aparecem com zoom a partir de 0.35; outras cidades/portos/fortes só aparecem de perto (zoom >= 0.75)
-            const isVisible = isLiveMap && mode === "view" ? (isCapital ? view.z >= LIVE_MAP_ZOOM.capitalMarkers : view.z >= LIVE_MAP_ZOOM.otherMarkers) : (isCapital ? view.z >= 0.2 : view.z >= 0.25);
+            const isVisible = isLiveMap && mode === "view" ? (isCapital ? view.z >= 0.16 : view.z >= 0.38) : (isCapital ? view.z >= 0.2 : view.z >= 0.25);
             if (!isVisible) return null;
             const r = isCapital ? 9 : 6;
 
@@ -965,9 +950,9 @@ export default function MapApp() {
           })}
 
           {/* Nomes dos países com tamanho dinâmico pelo território e limite de zoom */}
-          {showRegionNames && layers.labels && (!isLiveMap || mode !== "view" || view.z >= LIVE_MAP_ZOOM.regionLabels) && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0 && (!isLiveMap || mode !== "view" || item.keys.length >= LIVE_MAP_ZOOM.regionLabelMinCells)).map(({ region, keys, centerX, centerY }) => <text key={`region-label-${region.id}`} x={centerX} y={centerY} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>)}
+          {showRegionNames && layers.labels && (!isLiveMap || mode !== "view" || view.z >= 0.45) && regionTerritories.filter(item => visibleNations.some(n => n.id === item.region.nationId) && item.keys.length > 0 && (!isLiveMap || mode !== "view" || item.keys.length >= 4)).map(({ region, keys, centerX, centerY }) => <text key={`region-label-${region.id}`} x={centerX} y={centerY} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>)}
           {showNationNames && layers.labels && filter !== "alianças" && (!isLiveMap || mode !== "view" || view.z >= 0.2) && territories.filter(t => visibleNations.some(n => n.id === t.nation.id)).map(({ nation: n, keys: ks, centerX, centerY }) => {
-            if (!ks.length || (isLiveMap && mode === "view" && view.z < LIVE_MAP_ZOOM.countryDetail && ks.length < LIVE_MAP_ZOOM.countryLabelMinCells)) return null;
+            if (!ks.length || (isLiveMap && mode === "view" && view.z < 0.35 && ks.length < 20)) return null;
             const x = centerX, y = centerY;
 
             // Escala conforme tamanho da área territorial (com teto para não ficar gigante)
