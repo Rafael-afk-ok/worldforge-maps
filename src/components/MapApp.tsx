@@ -4,6 +4,9 @@ import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2,
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://luctonaqnzzqhcuwjkht.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+
 type Relation = "propria" | "amigavel" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; relations?: Record<string, Relation> | undefined; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
 type Region = { id: string; name: string; nationId: string; color: string };
@@ -547,6 +550,74 @@ export default function MapApp() {
     setNotice(tx("Mapa e histórico exportados em JSON.", "Map and history exported as JSON.", "Mapa e historial exportados en JSON."));
   };
   const restoreVersion = (version: MapVersion) => setDialog({ type: "confirm", title: tx("Restaurar versão", "Restore version", "Restaurar versión"), message: tx(`Restaurar "${version.name}"?`, `Restore "${version.name}"?`, `¿Restaurar "${version.name}"?`), onSubmit: () => { setData(readMap(version.data)); setMapName(version.name); setMapDescription(version.description); setNotice(tx("Versão restaurada.", "Version restored.", "Versión restaurada.")); } });
+  const loadPublishedMap = async () => {
+    if (!SUPABASE_PUBLISHABLE_KEY) {
+      window.alert("Live map is not configured yet. Set VITE_SUPABASE_PUBLISHABLE_KEY in the site environment.");
+      return;
+    }
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/published_map?id=eq.1&select=map_data,map_name,map_description,updated_at`, {
+        headers: {
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        },
+      });
+      if (!response.ok) throw new Error("Could not load the published map.");
+      const rows = await response.json() as { map_data: unknown; map_name: string; map_description: string }[];
+      const published = rows[0];
+      if (!published) {
+        window.alert("No map has been published yet.");
+        return;
+      }
+      const next = readMap(published.map_data);
+      setData(next);
+      setMapName(published.map_name || "WorldForge Maps");
+      setMapDescription(published.map_description || "");
+      setViewerReferenceNationId(next.playerNationId ?? "");
+      setSel(null);
+      setBrush(null);
+      setDraft([]);
+      setFilter("todas");
+      setTool("mover");
+      setMode("view");
+      window.setTimeout(fitMap, 0);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not load the published map.");
+    }
+  };
+
+  const publishMap = async () => {
+    if (!SUPABASE_PUBLISHABLE_KEY) {
+      window.alert("Publishing is not configured yet. Set VITE_SUPABASE_PUBLISHABLE_KEY in the site environment.");
+      return;
+    }
+    const password = window.prompt("Enter the publishing password:");
+    if (password === null) return;
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/publish-map`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          password,
+          map_data: data,
+          map_name: mapName,
+          map_description: mapDescription,
+        }),
+      });
+      const result = await response.json() as { success?: boolean; error?: string; message?: string };
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to publish the map.");
+      }
+      window.alert("Map published successfully. Visitors can now see this version in Live mode.");
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to publish the map.");
+    }
+  };
+
   const importJson = async (f?: File) => {
     if (!f) { setPendingViewer(false); return; }
     try {
@@ -637,7 +708,7 @@ export default function MapApp() {
           <p className={`mb-2 text-xs font-semibold uppercase tracking-wider ${activeHomeTheme.muted}`}>{tx("Tema da tela inicial", "Home screen theme", "Tema de la pantalla inicial")}</p>
           <div className="flex flex-wrap gap-2">{HOME_THEMES.map(theme => <button type="button" key={theme.id} aria-pressed={homeTheme === theme.id} onClick={() => setHomeTheme(theme.id)} className={`rounded-full border px-3 py-1.5 text-sm transition ${homeTheme === theme.id ? "border-primary ring-2 ring-primary/30" : "border-current/20"} ${theme.id === "midnight" ? "bg-slate-900 text-slate-100" : theme.id === "parchment" ? "bg-amber-100 text-amber-950" : theme.id === "ocean" ? "bg-sky-900 text-sky-100" : theme.id === "forest" ? "bg-emerald-900 text-emerald-100" : "bg-background text-foreground"}`}>{theme.id === "atlas" ? tx("Atlas", "Atlas", "Atlas") : theme.id === "midnight" ? tx("Noturno", "Midnight", "Nocturno") : theme.id === "parchment" ? tx("Pergaminho", "Parchment", "Pergamino") : theme.id === "ocean" ? tx("Oceano", "Ocean", "Océano") : tx("Floresta", "Forest", "Bosque")}</button>)}</div>
         </div>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
           <button type="button" className={`min-h-32 rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${activeHomeTheme.card}`} onClick={() => { try { const saved = localStorage.getItem(KEY); if (saved) { const stored = JSON.parse(saved) as Record<string, unknown>; setData(readMap(stored["map"] ?? stored)); if (typeof stored["mapName"] === "string") setMapName(stored["mapName"]); if (typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]); if (Array.isArray(stored["versions"])) setVersions(stored["versions"] as MapVersion[]); } else { setData(empty); setMapName("Meu mundo"); setMapDescription(""); } } catch { setData(empty); } setTool("mover"); setSel(null); setPanelOpen(false); setMode("edit"); }}>
             <span className={`mb-3 inline-flex rounded-lg border border-current/20 p-2 ${activeHomeTheme.accent}`}><Pencil className="h-5 w-5" /></span>
             <strong className="block">{tx("Modo de edição", "Editing mode", "Modo de edición")}</strong><p className={`mt-2 text-sm ${activeHomeTheme.muted}`}>{tx("Criar, editar e salvar mapas.", "Create, edit and save maps.", "Crear, editar y guardar mapas.")}</p>
@@ -645,6 +716,10 @@ export default function MapApp() {
           <button type="button" className={`min-h-32 rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${activeHomeTheme.card}`} onClick={() => { setPendingViewer(true); importRef.current?.click(); }}>
             <span className={`mb-3 inline-flex rounded-lg border border-current/20 p-2 ${activeHomeTheme.accent}`}><Eye className="h-5 w-5" /></span>
             <strong className="block">{tx("Modo de visualização", "View-only mode", "Modo de visualización")}</strong><p className={`mt-2 text-sm ${activeHomeTheme.muted}`}>{tx("Abrir um JSON para explorar o mapa sem alterar o original.", "Open a JSON map to explore it without changing the original.", "Abrir un mapa JSON para explorarlo sin cambiar el original.")}</p>
+          </button>
+          <button type="button" className={`min-h-32 rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${activeHomeTheme.card}`} onClick={() => void loadPublishedMap()}>
+            <span className={`mb-3 inline-flex rounded-lg border border-current/20 p-2 ${activeHomeTheme.accent}`}><Upload className="h-5 w-5" /></span>
+            <strong className="block">{tx("Ao Vivo", "Live map", "Mapa en vivo")}</strong><p className={`mt-2 text-sm ${activeHomeTheme.muted}`}>{tx("Ver o mapa compartilhado publicado para todos.", "View the shared map published for everyone.", "Ver el mapa compartido publicado para todos.")}</p>
           </button>
         </div>
         <p className={`mt-4 text-xs ${activeHomeTheme.muted}`}>{tx("O tema escolhido fica salvo neste dispositivo. A visualização não grava alterações no mapa.", "Your theme is saved on this device. View mode does not save map changes.", "El tema se guarda en este dispositivo. La vista no guarda cambios en el mapa.")}</p>
@@ -883,6 +958,7 @@ export default function MapApp() {
         <div className="map-toolbar" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
           {mode === "view" && <><Button variant="ghost" size="icon" aria-label={t.settings} title={t.settings} onClick={() => setSettingsOpen(v => !v)}><Settings /></Button><Button variant="ghost" size="icon" aria-label={tx("Voltar ao início", "Back to home", "Volver al inicio")} title={tx("Voltar ao início", "Back to home", "Volver al inicio")} onClick={() => setMode("home")}><X /></Button></>}
           {mode === "edit" && <>
+          <Button variant="ghost" size="icon" aria-label={tx("Publicar mapa compartilhado", "Publish shared map", "Publicar mapa compartido")} title={tx("Publicar mapa compartilhado", "Publish shared map", "Publicar mapa compartido")} onClick={() => void publishMap()}><Upload /></Button>
           <Button variant="ghost" size="icon" aria-label={tx("Alternar para visualização", "Switch to view mode", "Cambiar a visualización")} title={tx("Alternar para visualização", "Switch to view mode", "Cambiar a visualización")} onClick={() => { setSel(null); setPanelOpen(false); setMode("view"); }}><Eye /></Button>
           <Button variant="ghost" size="icon" className="min-[901px]:hidden" aria-label={t.tools} title={t.tools} onClick={() => setPanelOpen(v => !v)}><Menu /></Button>
           <Button variant="ghost" size="icon" disabled={!canUndo} aria-label={t.undo} title={t.undo} onClick={handleUndo}><Undo className="h-4 w-4" /></Button>
