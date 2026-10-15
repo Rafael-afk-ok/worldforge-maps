@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, startTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
@@ -709,6 +709,7 @@ export default function MapApp() {
     setSelectedRegionId(region.id); setRegionName(""); setShowRegions(true); setTool("regiao");
     setNotice(tx("Região criada. Pinte as células do país para delimitá-la.", "Region created. Paint cells belonging to this country to delimit it.", "Región creada. Pinta celdas de este país para delimitarla."));
   };
+  const regionPathCache = useRef(new Map<string, { keys: string[]; smooth: boolean; path: string }>());
   const regionTerritories = useMemo(() => {
     const regionById = new Map((data.regions ?? []).map(region => [region.id, region] as const));
     const keysByRegion = new Map<string, string[]>();
