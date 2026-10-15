@@ -13,18 +13,25 @@ export function expandTiles(tiles: Record<string, string>, factor: number) {
   return out;
 }
 
-/** Sample every crossed cell, even when pointer events arrive far apart. */
+/** Trace the integer-cell brush path without fractional sampling or duplicate stamps. */
 export function strokeCells(from: [number, number], to: [number, number], radius: number) {
   const result = new Set<string>();
-  const steps = Math.max(1, Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) * 2));
-  for (let i = 0; i <= steps; i++) {
-    const x = Math.floor(from[0] + (to[0] - from[0]) * i / steps);
-    const y = Math.floor(from[1] + (to[1] - from[1]) * i / steps);
-    for (let dx = -radius; dx <= radius; dx++) for (let dy = -radius; dy <= radius; dy++) {
-      if (dx * dx + dy * dy > radius * radius) continue;
-      const cx = x + dx, cy = y + dy;
+  let x = Math.floor(from[0]), y = Math.floor(from[1]);
+  const endX = Math.floor(to[0]), endY = Math.floor(to[1]);
+  const dx = Math.abs(endX - x), sx = x < endX ? 1 : -1;
+  const dy = -Math.abs(endY - y), sy = y < endY ? 1 : -1;
+  let error = dx + dy;
+
+  while (true) {
+    for (let ox = -radius; ox <= radius; ox++) for (let oy = -radius; oy <= radius; oy++) {
+      if (ox * ox + oy * oy > radius * radius) continue;
+      const cx = x + ox, cy = y + oy;
       if (cx >= 0 && cy >= 0 && cx < MAP_COLS && cy < MAP_ROWS) result.add(`${cx},${cy}`);
     }
+    if (x === endX && y === endY) break;
+    const twiceError = 2 * error;
+    if (twiceError >= dy) { error += dy; x += sx; }
+    if (twiceError <= dx) { error += dx; y += sy; }
   }
   return result;
 }
