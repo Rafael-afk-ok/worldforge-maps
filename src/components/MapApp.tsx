@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, startTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil } from "lucide-react";
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://luctonaqnzzqhcuwjkht.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "https://luctonaqnzzqhcuwjkht.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"] || "";
 
 type Relation = "propria" | "amigavel" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; relations?: Record<string, Relation> | undefined; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
@@ -244,9 +244,9 @@ export default function MapApp() {
       cancelIdleCallback?: (handle: number) => void;
     };
     if (idleWindow.requestIdleCallback) {
-      idleId = idleWindow.requestIdleCallback(save, { timeout: 2500 });
+      timeoutId = setTimeout(() => { idleId = idleWindow.requestIdleCallback?.(save, { timeout: 3000 }); }, 1500);
     } else {
-      timeoutId = setTimeout(save, 1200);
+      timeoutId = setTimeout(save, 2000);
     }
     return () => {
       cancelled = true;
@@ -333,15 +333,15 @@ export default function MapApp() {
         if (value.regionId === null) delete regionTiles[cell]; else regionTiles[cell] = value.regionId;
       }
       const nextData = { ...data, tiles, regionTiles };
-      setData(nextData);
       pushHistory(nextData);
-    }
+      // Keep the preview visible while React recomputes borders in the background.
+      startTransition(() => { setData(nextData); setPreviewPaintCells([]); });
+    } else setPreviewPaintCells([]);
     pending.clear();
     if (previewFrame.current !== null) {
       cancelAnimationFrame(previewFrame.current);
       previewFrame.current = null;
     }
-    setPreviewPaintCells([]);
   };
   const stopDrag = () => {
     const finished = drag.current;
@@ -709,6 +709,7 @@ export default function MapApp() {
     setSelectedRegionId(region.id); setRegionName(""); setShowRegions(true); setTool("regiao");
     setNotice(tx("Região criada. Pinte as células do país para delimitá-la.", "Region created. Paint cells belonging to this country to delimit it.", "Región creada. Pinta celdas de este país para delimitarla."));
   };
+  const regionPathCache = useRef(new Map<string, { keys: string[]; smooth: boolean; path: string }>());
   const regionTerritories = useMemo(() => {
     const regionById = new Map((data.regions ?? []).map(region => [region.id, region] as const));
     const keysByRegion = new Map<string, string[]>();
@@ -723,7 +724,11 @@ export default function MapApp() {
       const keys = keysByRegion.get(region.id) ?? [];
       let sx = 0, sy = 0;
       for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
-      return { region, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
+      const prev = regionPathCache.current.get(region.id);
+      const same = prev && prev.smooth === data.smooth && prev.keys.length === keys.length && prev.keys.every((k, i) => k === keys[i]);
+      const path = same ? prev.path : keys.length ? territoryPath(keys, data.smooth) : "";
+      if (!same) regionPathCache.current.set(region.id, { keys, smooth: data.smooth, path });
+      return { region, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path };
     });
   }, [data.regions, data.regionTiles, data.tiles, data.smooth]);
   const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
@@ -997,7 +1002,7 @@ export default function MapApp() {
             const region = pending?.regionId ? (data.regions ?? []).find(item => item.id === pending.regionId) : undefined;
             const nation = pending?.nationId ? nationById(pending.nationId) : undefined;
             const fill = tool === "regiao" ? (region?.color ?? nation?.color ?? "var(--background)") : (nation?.color ?? "var(--background)");
-            return <rect key={`paint-preview-${cell}`} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill={fill} fillOpacity={tool === "regiao" ? (data.regionOpacity ?? 0.45) : pending?.nationId ? 0.6 : 1} pointerEvents="none" />;
+            return <rect key={`paint-preview-${cell}`} x={(x ?? 0) * CELL} y={(y ?? 0) * CELL} width={CELL} height={CELL} fill={fill} fillOpacity={tool === "regiao" ? (data.regionOpacity ?? 0.45) : pending?.nationId ? 0.6 : 1} pointerEvents="none" />;
           })}
           {data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= 0.35) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
