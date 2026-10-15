@@ -801,7 +801,7 @@ export default function MapApp() {
   const activeHomeTheme = HOME_THEMES.find(theme => theme.id === homeTheme) ?? HOME_THEMES[0]!;
 
   if (mode === "home") return (
-    <div className={`min-h-screen flex items-center justify-center p-4 sm:p-6 ${activeHomeTheme.background} ${activeHomeTheme.foreground} transition-colors`}>
+    <div data-theme={homeTheme} className={`worldforge-home min-h-screen flex items-center justify-center p-4 sm:p-6 ${activeHomeTheme.background} ${activeHomeTheme.foreground} transition-colors`}>
       <div className={`w-full max-w-2xl rounded-2xl border p-5 shadow-xl sm:p-8 ${activeHomeTheme.panel}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><h1 className={`font-display text-3xl font-bold ${activeHomeTheme.accent}`}>{t.appName}</h1>
