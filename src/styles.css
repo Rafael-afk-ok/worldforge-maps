@@ -171,7 +171,7 @@ body { font-family: var(--font-sans); font-size: 14px; }
 
 
 /* WorldForge themes override the semantic colors used by buttons, fields, cards and dialogs. */
-.atlas-app[data-theme="midnight"] {
+:is(.atlas-app, .atlas-home)[data-theme="midnight"] {
   --background: oklch(0.13 0.025 260);
   --foreground: oklch(0.96 0.01 250);
   --card: oklch(0.19 0.025 260);
@@ -190,7 +190,7 @@ body { font-family: var(--font-sans); font-size: 14px; }
   --input: oklch(0.25 0.025 260);
   --ring: oklch(0.72 0.12 205);
 }
-.atlas-app[data-theme="parchment"] {
+:is(.atlas-app, .atlas-home)[data-theme="parchment"] {
   --background: oklch(0.95 0.045 85);
   --foreground: oklch(0.28 0.055 65);
   --card: oklch(0.98 0.035 85);
@@ -209,7 +209,7 @@ body { font-family: var(--font-sans); font-size: 14px; }
   --input: oklch(0.96 0.035 85);
   --ring: oklch(0.58 0.1 55);
 }
-.atlas-app[data-theme="ocean"] {
+:is(.atlas-app, .atlas-home)[data-theme="ocean"] {
   --background: oklch(0.16 0.055 245);
   --foreground: oklch(0.96 0.025 220);
   --card: oklch(0.22 0.06 245);
@@ -228,7 +228,7 @@ body { font-family: var(--font-sans); font-size: 14px; }
   --input: oklch(0.25 0.05 245);
   --ring: oklch(0.75 0.12 205);
 }
-.atlas-app[data-theme="forest"] {
+:is(.atlas-app, .atlas-home)[data-theme="forest"] {
   --background: oklch(0.16 0.045 150);
   --foreground: oklch(0.96 0.025 145);
   --card: oklch(0.22 0.05 150);
@@ -279,3 +279,7 @@ body { font-family: var(--font-sans); font-size: 14px; }
 .inspector-body details { border: 0; padding: 0; }
 .inspector-body .entity-section { padding: 0; border: 0; }
 @media (max-width: 900px) { .floating-inspector { top: 64px; right: 12px; height: calc(100dvh - 142px); width: 380px; } .painting-dock { bottom: 10px; gap: 1px; overflow-x: auto; } .painting-dock button { width: 32px; height: 32px; } .map-tools-panel { top: 60px; bottom: 64px; left: 8px; } }
+
+.viewer-menu { width: 300px; }
+.inspector-tabs .inspector-tab[aria-selected="false"] { background: transparent; color: var(--muted-foreground); }
+.inspector-tabs .inspector-tab[aria-selected="true"] { border-bottom-color: var(--primary); background: var(--accent); color: var(--primary); }
