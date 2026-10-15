@@ -6,8 +6,8 @@ import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2,
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://luctonaqnzzqhcuwjkht.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+const SUPABASE_URL = import.meta.env['VITE_SUPABASE_URL'] || "https://luctonaqnzzqhcuwjkht.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || "";
 
 type Relation = "propria" | "amigavel" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; relations?: Record<string, Relation> | undefined; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
@@ -983,7 +983,7 @@ export default function MapApp() {
           {layers.territories && territories.filter(t => visibleNationIds.has(t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
           {showRegions && layers.territories && regionTerritories.filter(item => visibleNationIds.has(item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={`region-${region.id}`} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={data.regionOpacity ?? 0.45} stroke={region.color} strokeOpacity={data.regionOpacity ?? 0.45} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
           {previewPaintCells.map(cell => {
-            const [x, y] = cell.split(",").map(Number);
+            const [x = 0, y = 0] = cell.split(",").map(Number);
             const pending = pendingPaint.current.get(cell);
             const region = pending?.regionId ? (data.regions ?? []).find(item => item.id === pending.regionId) : undefined;
             const nation = pending?.nationId ? nationById(pending.nationId) : undefined;
