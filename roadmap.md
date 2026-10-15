@@ -6,7 +6,7 @@
 - [x] Exportação/importação completas para backup e transferência entre dispositivos.
 - [x] Pincel contínuo com tamanho ajustável e bordas suaves.
 - [x] Verificar edição, salvamento, compatibilidade e apresentação.
-- [ ] Simplificar menus e aplicar tipografia moderna.
-- [ ] Janelas móveis de países e locais com abas e fotos.
-- [ ] Ferramentas inferiores com ícones e status alternável.
-- [ ] Verificar edição e visualização no navegador.
+- [x] Simplificar menus e aplicar tipografia moderna.
+- [x] Janelas móveis de países e locais com abas e fotos.
+- [x] Ferramentas inferiores com ícones e status alternável.
+- [x] Verificar edição e visualização no navegador.
