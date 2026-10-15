@@ -98,7 +98,7 @@ export function floodFill(
 export function territoryPath(keys: string[], smooth: boolean) {
   const cells = new Set(keys);
   const edges = new Map<string, string[]>();
-  const add = (a: string, b: string) => edges.set(a, [...(edges.get(a) ?? []), b]);
+  const add = (a: string, b: string) => { const list = edges.get(a); if (list) list.push(b); else edges.set(a, [b]); };
   for (const key of keys) {
     const [x = 0, y = 0] = key.split(',').map(Number);
     if (!cells.has(`${x},${y - 1}`)) add(`${x},${y}`, `${x + 1},${y}`);

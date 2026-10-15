@@ -244,9 +244,9 @@ export default function MapApp() {
       cancelIdleCallback?: (handle: number) => void;
     };
     if (idleWindow.requestIdleCallback) {
-      idleId = idleWindow.requestIdleCallback(save, { timeout: 2500 });
+      timeoutId = setTimeout(() => { idleId = idleWindow.requestIdleCallback?.(save, { timeout: 3000 }); }, 1500);
     } else {
-      timeoutId = setTimeout(save, 1200);
+      timeoutId = setTimeout(save, 2000);
     }
     return () => {
       cancelled = true;
@@ -333,15 +333,15 @@ export default function MapApp() {
         if (value.regionId === null) delete regionTiles[cell]; else regionTiles[cell] = value.regionId;
       }
       const nextData = { ...data, tiles, regionTiles };
-      setData(nextData);
       pushHistory(nextData);
-    }
+      // Keep the preview visible while React recomputes borders in the background.
+      startTransition(() => { setData(nextData); setPreviewPaintCells([]); });
+    } else setPreviewPaintCells([]);
     pending.clear();
     if (previewFrame.current !== null) {
       cancelAnimationFrame(previewFrame.current);
       previewFrame.current = null;
     }
-    setPreviewPaintCells([]);
   };
   const stopDrag = () => {
     const finished = drag.current;
@@ -723,7 +723,11 @@ export default function MapApp() {
       const keys = keysByRegion.get(region.id) ?? [];
       let sx = 0, sy = 0;
       for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
-      return { region, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
+      const prev = regionPathCache.current.get(region.id);
+      const same = prev && prev.smooth === data.smooth && prev.keys.length === keys.length && prev.keys.every((k, i) => k === keys[i]);
+      const path = same ? prev.path : keys.length ? territoryPath(keys, data.smooth) : "";
+      if (!same) regionPathCache.current.set(region.id, { keys, smooth: data.smooth, path });
+      return { region, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path };
     });
   }, [data.regions, data.regionTiles, data.tiles, data.smooth]);
   const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
