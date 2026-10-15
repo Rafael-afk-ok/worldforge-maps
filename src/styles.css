@@ -258,3 +258,123 @@ body { font-family: var(--font-sans); font-size: 18px; }
 @media (max-width: 600px) {
   .map-toolbar { top: 6px; gap: 2px; padding: 2px; }
 }
+
+
+/* Military cartography HUD: the Atlas theme uses charcoal, field-olive and restrained brass. */
+.atlas-app[data-theme="atlas"],
+.worldforge-home[data-theme="atlas"] {
+  color-scheme: dark;
+  --background: oklch(0.16 0.018 145);
+  --foreground: oklch(0.91 0.025 86);
+  --card: oklch(0.205 0.022 145);
+  --card-foreground: oklch(0.91 0.025 86);
+  --popover: oklch(0.19 0.022 145);
+  --popover-foreground: oklch(0.91 0.025 86);
+  --primary: oklch(0.76 0.12 82);
+  --primary-foreground: oklch(0.19 0.025 145);
+  --secondary: oklch(0.25 0.022 145);
+  --secondary-foreground: oklch(0.9 0.025 86);
+  --muted: oklch(0.24 0.02 145);
+  --muted-foreground: oklch(0.7 0.025 86);
+  --accent: oklch(0.29 0.035 82);
+  --accent-foreground: oklch(0.94 0.025 86);
+  --border: oklch(0.39 0.035 82 / 72%);
+  --input: oklch(0.19 0.022 145);
+  --ring: oklch(0.76 0.12 82);
+  --sidebar: oklch(0.18 0.02 145);
+  --sidebar-foreground: oklch(0.91 0.025 86);
+  --sidebar-primary: oklch(0.76 0.12 82);
+  --sidebar-primary-foreground: oklch(0.19 0.025 145);
+  --sidebar-accent: oklch(0.29 0.035 82);
+  --sidebar-accent-foreground: oklch(0.94 0.025 86);
+  --sidebar-border: oklch(0.39 0.035 82 / 72%);
+  --sidebar-ring: oklch(0.76 0.12 82);
+}
+.worldforge-home[data-theme="atlas"] {
+  background-image:
+    linear-gradient(oklch(0.7 0.025 82 / 3%) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.7 0.025 82 / 3%) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.atlas-app[data-theme="atlas"] aside,
+.atlas-app[data-theme="atlas"] [role="dialog"],
+.atlas-app[data-theme="atlas"] .map-toolbar {
+  box-shadow: 0 8px 28px oklch(0.05 0.01 145 / 28%);
+}
+.atlas-app[data-theme="atlas"] aside {
+  border-color: var(--border);
+}
+.atlas-app[data-theme="atlas"] .map-tools-panel,
+.atlas-app[data-theme="atlas"] .map-details-panel {
+  background: linear-gradient(180deg, oklch(0.22 0.022 145), oklch(0.17 0.018 145));
+}
+.atlas-app[data-theme="atlas"] button {
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.atlas-app[data-theme="atlas"] button:hover:not(:disabled) {
+  border-color: oklch(0.68 0.1 82 / 72%);
+}
+.atlas-app[data-theme="atlas"] button:focus-visible,
+.worldforge-home[data-theme="atlas"] button:focus-visible,
+.atlas-app[data-theme="atlas"] input:focus-visible,
+.atlas-app[data-theme="atlas"] select:focus-visible,
+.atlas-app[data-theme="atlas"] textarea:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.atlas-app[data-theme="atlas"] .field,
+.atlas-app[data-theme="atlas"] input:not([type="checkbox"]):not([type="range"]):not([type="file"]),
+.atlas-app[data-theme="atlas"] select,
+.atlas-app[data-theme="atlas"] textarea {
+  border-radius: 0.4rem;
+}
+.atlas-app[data-theme="atlas"] .label {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+}
+.atlas-app[data-theme="atlas"] article,
+.atlas-app[data-theme="atlas"] [role="tabpanel"] > button {
+  border-color: oklch(0.39 0.035 82 / 55%);
+}
+.atlas-app[data-theme="atlas"] .map-toolbar {
+  border-color: oklch(0.58 0.08 82 / 75%);
+  background: oklch(0.18 0.02 145 / 96%);
+  backdrop-filter: blur(12px);
+}
+.worldforge-home[data-theme="atlas"] > div {
+  border-color: oklch(0.48 0.07 82 / 65%);
+  box-shadow: 0 24px 70px oklch(0.04 0.01 145 / 45%);
+}
+.worldforge-home[data-theme="atlas"] > div > div > button {
+  background: linear-gradient(145deg, oklch(0.23 0.022 145), oklch(0.19 0.018 145));
+  border-color: oklch(0.39 0.035 82 / 55%);
+}
+.worldforge-home[data-theme="atlas"] > div > div > button:hover {
+  background: linear-gradient(145deg, oklch(0.29 0.035 82), oklch(0.22 0.022 145));
+  transform: translateY(-1px);
+}
+.atlas-app[data-theme="atlas"] ::-webkit-scrollbar { width: 8px; height: 8px; }
+.atlas-app[data-theme="atlas"] ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: oklch(0.54 0.055 82 / 65%);
+  background-clip: padding-box;
+}
+@media (max-width: 900px) {
+  .atlas-app[data-theme="atlas"] .map-tools-panel,
+  .atlas-app[data-theme="atlas"] .map-details-panel {
+    border-color: oklch(0.55 0.075 82 / 72%);
+  }
+  .atlas-app[data-theme="atlas"] .map-toolbar {
+    max-width: calc(100% - 12px);
+    gap: 3px;
+  }
+}
+@media (max-width: 600px) {
+  .worldforge-home { padding: 0.75rem; }
+  .worldforge-home > div { padding: 1rem; }
+  .worldforge-home > div > div > button { min-width: 0; }
+  .atlas-app[data-theme="atlas"] .map-toolbar button { min-height: 2rem; }
+}
