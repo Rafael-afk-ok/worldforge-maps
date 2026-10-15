@@ -292,7 +292,8 @@ export default function MapApp() {
   };
   const paint = useCallback((cx: number, cy: number) => {
     const [wx, wy] = toWorld(cx, cy);
-    const current: [number, number] = [wx / CELL, wy / CELL];
+    // Snap the brush center to the same integer cell shown by the cursor.
+    const current: [number, number] = [Math.floor(wx / CELL), Math.floor(wy / CELL)];
     const cells = strokeCells(lastPaint.current ?? current, current, brushSize - 1);
     lastPaint.current = current;
     const pending = pendingPaint.current;
