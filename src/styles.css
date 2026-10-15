@@ -19,8 +19,8 @@
  */
 
 @theme inline {
-  --font-display: "VT323", monospace;
-  --font-sans: "VT323", monospace;
+  --font-display: "Manrope", sans-serif;
+  --font-sans: "Manrope", sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -149,11 +149,11 @@
 .field{width:100%;border:1px solid var(--border);background:var(--background);border-radius:.25rem;padding:.25rem .5rem}
 .rel-propria{color:var(--primary)}.rel-aliada{color:var(--primary)}.rel-neutra{color:var(--muted-foreground)}.rel-inimiga{color:var(--destructive)}
 
-body { font-family: var(--font-sans); font-size: 18px; }
+body { font-family: var(--font-sans); font-size: 14px; }
 .atlas-app { height: 100dvh; }
-.atlas-app .text-xs { font-size: 1rem; line-height: 1.2; }
-.atlas-app .text-sm { font-size: 1.1rem; line-height: 1.2; }
-.atlas-app .field { font-size: 1.1rem; }
+.atlas-app .text-xs { font-size: .75rem; line-height: 1.5; }
+.atlas-app .text-sm { font-size: .875rem; line-height: 1.5; }
+.atlas-app .field { font-size: .875rem; padding: .5rem .65rem; }
 .atlas-app button { letter-spacing: 0; }
 .atlas-app input[type=range] { accent-color: var(--primary); }
 .atlas-app input[type=file] { max-width: 100%; }
@@ -258,3 +258,24 @@ body { font-family: var(--font-sans); font-size: 18px; }
 @media (max-width: 600px) {
   .map-toolbar { top: 6px; gap: 2px; padding: 2px; }
 }
+
+.atlas-app { --shadow-floating: 0 12px 36px color-mix(in oklab, var(--foreground) 15%, transparent); }
+.atlas-app .label { font-size: .7rem; text-transform: none; font-weight: 600; }
+.map-tools-panel { position: absolute; top: 64px; bottom: 84px; left: 12px; z-index: 30; width: 280px; border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-floating); }
+.map-tools-panel.panel-closed { display: none; }
+.map-tools-panel details { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 12px 0; }
+.map-toolbar { top: 12px; left: 12px; transform: none; border-radius: 8px; padding: 4px; box-shadow: var(--shadow-floating); }
+.map-toolbar button { width: 34px; height: 34px; }
+.painting-dock { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 3px; max-width: calc(100% - 24px); padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: var(--shadow-floating); }
+.painting-dock button { flex-shrink: 0; width: 36px; height: 36px; }
+.world-status-strip { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; flex-wrap: wrap; gap: 20px; max-width: calc(100% - 32px); padding: 10px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: var(--shadow-floating); font-size: .75rem; }
+.floating-inspector { position: fixed; top: 80px; right: 24px; z-index: 40; display: flex; flex-direction: column; width: 420px; max-width: calc(100vw - 24px); height: min(620px, calc(100dvh - 170px)); border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--foreground); box-shadow: var(--shadow-floating); overflow: hidden; }
+.inspector-header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: move; touch-action: none; border-bottom: 1px solid var(--border); }
+.inspector-tabs { display: flex; flex-shrink: 0; overflow-x: auto; padding: 0 10px; border-bottom: 1px solid var(--border); }
+.inspector-tab { border-radius: 0; border-bottom: 2px solid transparent; height: 42px; font-size: .75rem; }
+.inspector-tab.active { border-bottom-color: var(--primary); color: var(--primary); background: var(--accent); }
+.inspector-body { overflow-y: auto; flex: 1; padding: 20px; }
+.inspector-body [hidden] { display: none; }
+.inspector-body details { border: 0; padding: 0; }
+.inspector-body .entity-section { padding: 0; border: 0; }
+@media (max-width: 900px) { .floating-inspector { top: 64px; right: 12px; height: calc(100dvh - 142px); width: 380px; } .painting-dock { bottom: 10px; gap: 1px; overflow-x: auto; } .painting-dock button { width: 32px; height: 32px; } .map-tools-panel { top: 60px; bottom: 64px; left: 8px; } }

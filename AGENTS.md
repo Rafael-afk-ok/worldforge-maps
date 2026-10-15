@@ -14,3 +14,4 @@
 - Fullscreen is progressive enhancement: request native fullscreen and orientation locking when supported, otherwise use a viewport-filling map with a visible exit control.
 - UI text lives in per-language dictionaries in src/lib/i18n.ts, so every language stays complete and switchable at runtime.
 - Maps store their tile size; tiles from coarser older grids are subdivided on load, so old maps keep working after grid changes.
+- Use FloatingWindow for tabbed entity inspectors in edit and view modes; keep dragging independent of map gestures so inspecting never paints or moves the map.

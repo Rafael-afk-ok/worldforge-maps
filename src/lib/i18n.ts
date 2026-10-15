@@ -6,6 +6,7 @@ export const LANGS: { id: Lang; label: string }[] = [
 ];
 
 const pt = {
+  overview: "Visão geral", appearance: "Aparência", regionsTab: "Regiões", diplomacyTab: "Diplomacia", photosTab: "Fotos", economyTab: "Economia", positionTab: "Posição", worldStatus: "Status do mundo", mainMenu: "Menu principal", noPhoto: "Nenhuma foto adicionada.",
   appName: "Frontiers Map Simulator",
   tools: "Ferramentas", close: "Fechar", mover: "✋ Mover / Selecionar", pintar: "🖌 Pintar território", balde: "🪣 Preencher área", apagar: "🧽 Apagar",
   capital: "★ Capital", cidade: "● Cidade", forte: "▲ Forte", porto: "⚓ Porto", estrada: "━ Estrada", rota: "┅ Rota marítima",
@@ -34,6 +35,7 @@ const pt = {
 export type Dict = typeof pt;
 
 const en: Dict = {
+  overview: "Overview", appearance: "Appearance", regionsTab: "Regions", diplomacyTab: "Diplomacy", photosTab: "Photos", economyTab: "Economy", positionTab: "Position", worldStatus: "World status", mainMenu: "Main menu", noPhoto: "No photo added.",
   appName: "Frontiers Map Simulator",
   tools: "Tools", close: "Close", mover: "✋ Move / Select", pintar: "🖌 Paint territory", balde: "🪣 Fill area", apagar: "🧽 Erase",
   capital: "★ Capital", cidade: "● City", forte: "▲ Fort", porto: "⚓ Port", estrada: "━ Road", rota: "┅ Sea route",
@@ -61,6 +63,7 @@ const en: Dict = {
 };
 
 const es: Dict = {
+  overview: "Vista general", appearance: "Apariencia", regionsTab: "Regiones", diplomacyTab: "Diplomacia", photosTab: "Fotos", economyTab: "Economía", positionTab: "Posición", worldStatus: "Estado del mundo", mainMenu: "Menú principal", noPhoto: "No hay fotos añadidas.",
   appName: "Frontiers Map Simulator",
   tools: "Herramientas", close: "Cerrar", mover: "✋ Mover / Seleccionar", pintar: "🖌 Pintar territorio", balde: "🪣 Rellenar área", apagar: "🧽 Borrar",
   capital: "★ Capital", cidade: "● Ciudad", forte: "▲ Fuerte", porto: "⚓ Puerto", estrada: "━ Camino", rota: "┅ Ruta marítima",
