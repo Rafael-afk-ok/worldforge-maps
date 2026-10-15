@@ -4,8 +4,8 @@ import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2,
 import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://luctonaqnzzqhcuwjkht.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+const SUPABASE_URL = import.meta.env["VITE_SUPABASE_URL"] || "https://luctonaqnzzqhcuwjkht.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"] || "";
 
 type Relation = "propria" | "amigavel" | "neutra" | "inimiga";
 type Nation = { id: string; name: string; color: string; relation: Relation; relations?: Record<string, Relation> | undefined; ruler: string; treaties: string; notes: string; flag?: string | undefined; overlordId?: string | undefined; enemyIds?: string[] | undefined };
@@ -1002,7 +1002,7 @@ export default function MapApp() {
             const region = pending?.regionId ? (data.regions ?? []).find(item => item.id === pending.regionId) : undefined;
             const nation = pending?.nationId ? nationById(pending.nationId) : undefined;
             const fill = tool === "regiao" ? (region?.color ?? nation?.color ?? "var(--background)") : (nation?.color ?? "var(--background)");
-            return <rect key={`paint-preview-${cell}`} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill={fill} fillOpacity={tool === "regiao" ? (data.regionOpacity ?? 0.45) : pending?.nationId ? 0.6 : 1} pointerEvents="none" />;
+            return <rect key={`paint-preview-${cell}`} x={(x ?? 0) * CELL} y={(y ?? 0) * CELL} width={CELL} height={CELL} fill={fill} fillOpacity={tool === "regiao" ? (data.regionOpacity ?? 0.45) : pending?.nationId ? 0.6 : 1} pointerEvents="none" />;
           })}
           {data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= 0.35) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
