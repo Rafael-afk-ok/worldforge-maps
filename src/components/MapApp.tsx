@@ -225,7 +225,35 @@ export default function MapApp() {
     pushHistory(data);
   }, [data, loaded]);
 
-  useEffect(() => { if (loaded && mode === "edit") try { localStorage.setItem(KEY, JSON.stringify({ map: data, mapName, mapDescription, versions })); } catch { setNotice(t.storageFull); } }, [data, mapName, mapDescription, versions, loaded, mode]);
+  useEffect(() => {
+    if (!loaded || mode !== "edit") return;
+    let cancelled = false;
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const save = () => {
+      if (cancelled) return;
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ map: data, mapName, mapDescription, versions }));
+      } catch {
+        setNotice(t.storageFull);
+      }
+    };
+    // Avoid serializing the entire map in the same frame as a brush release.
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    if (idleWindow.requestIdleCallback) {
+      idleId = idleWindow.requestIdleCallback(save, { timeout: 2500 });
+    } else {
+      timeoutId = setTimeout(save, 1200);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined) idleWindow.cancelIdleCallback?.(idleId);
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    };
+  }, [data, mapName, mapDescription, versions, loaded, mode]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
