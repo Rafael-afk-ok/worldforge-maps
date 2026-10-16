@@ -14,6 +14,13 @@ export function cellsPath(keys: Iterable<string>) {
   return path;
 }
 
+/** Count the number of cells assigned to each ID in a tile dictionary. */
+export function countTileValues(values: Record<string, string>) {
+  const counts = new Map<string, number>();
+  for (const id of Object.values(values)) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return counts;
+}
+
 /** Older maps used larger tiles; split each old tile into factor×factor new tiles. */
 export function expandTiles(tiles: Record<string, string>, factor: number) {
   if (factor <= 1) return { ...tiles };
