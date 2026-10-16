@@ -52,6 +52,61 @@ type Tool = "mover" | "pintar" | "balde" | "apagar" | "regiao" | "comentario" | 
 
 const COLS = MAP_COLS, ROWS = MAP_ROWS, CELL = MAP_CELL, W = COLS * CELL, H = ROWS * CELL;
 const KEY = "atlas-nacoes-v1";
+const MAP_STORAGE_DB = "worldforge-map-storage";
+const MAP_STORAGE_STORE = "snapshots";
+
+function openMapStorage(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") { reject(new Error("IndexedDB unavailable")); return; }
+    const request = indexedDB.open(MAP_STORAGE_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(MAP_STORAGE_STORE)) db.createObjectStore(MAP_STORAGE_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("Could not open map storage"));
+  });
+}
+
+async function readStoredSnapshot(): Promise<Record<string, unknown> | null> {
+  try {
+    const db = await openMapStorage();
+    const stored = await new Promise<unknown>((resolve, reject) => {
+      const transaction = db.transaction(MAP_STORAGE_STORE, "readonly");
+      const request = transaction.objectStore(MAP_STORAGE_STORE).get(KEY);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("Could not read saved map"));
+      transaction.oncomplete = () => db.close();
+      transaction.onerror = () => { db.close(); reject(transaction.error ?? new Error("Could not read saved map")); };
+    });
+    if (stored && typeof stored === "object" && !Array.isArray(stored)) return stored as Record<string, unknown>;
+  } catch { /* Fall back to older localStorage snapshots. */ }
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as unknown;
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return null;
+    void writeStoredSnapshot(stored as Record<string, unknown>).catch(() => undefined);
+    return stored as Record<string, unknown>;
+  } catch { return null; }
+}
+
+async function writeStoredSnapshot(value: Record<string, unknown>): Promise<void> {
+  try {
+    const db = await openMapStorage();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(MAP_STORAGE_STORE, "readwrite");
+      transaction.objectStore(MAP_STORAGE_STORE).put(value, KEY);
+      transaction.oncomplete = () => { db.close(); resolve(); };
+      transaction.onerror = () => { db.close(); reject(transaction.error ?? new Error("Could not save map")); };
+      transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error("Could not save map")); };
+    });
+    try { localStorage.removeItem(KEY); } catch { /* IndexedDB copy is saved. */ }
+  } catch {
+    localStorage.setItem(KEY, JSON.stringify(value));
+  }
+}
+
 const uid = () => Math.random().toString(36).slice(2, 9);
 const empty: Data = { cellSize: MAP_CELL, nations: [], regions: [], regionTiles: {}, regionOpacity: 0.45, playerNationId: undefined, tiles: {}, markers: [], lines: [], comments: [], alliances: [], wars: [], bg: null, bgOpacity: 0.6, bgFit: "contain", bgScale: 1, bgX: 0, bgY: 0, bgRotation: 0, smooth: true, showGrid: true };
 const RELS: Relation[] = ["propria", "amigavel", "neutra", "inimiga"];
@@ -180,31 +235,37 @@ export default function MapApp() {
   };
 
   useEffect(() => {
-    try {
-      const s = localStorage.getItem(KEY);
-      const stored = s ? JSON.parse(s) as Record<string, unknown> : null;
-      const initial = stored ? readMap(stored["map"] ?? stored) : empty;
-      if (stored && Array.isArray(stored["versions"])) setVersions(stored["versions"] as MapVersion[]);
-      if (stored && typeof stored["mapName"] === "string") setMapName(stored["mapName"]);
-      if (stored && typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]);
-      setData(initial);
-      setViewerReferenceNationId(initial.playerNationId ?? "");
-      historyRef.current = [initial];
-      historyIndexRef.current = 0;
-      updateHistoryState();
-      const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent);
-      const coarseSmallScreen = window.matchMedia("(pointer: coarse)").matches && window.matchMedia("(max-width: 900px)").matches;
-      setIsMobileDevice(mobileUA || coarseSmallScreen);
-      setDeviceMode(localStorage.getItem("worldforge-device-mode") === "celular" ? "celular" : localStorage.getItem("worldforge-device-mode") === "pc" ? "pc" : (mobileUA || coarseSmallScreen) ? "celular" : "pc");
-      const savedHomeTheme = localStorage.getItem("worldforge-home-theme");
-      if (savedHomeTheme && HOME_THEMES.some(theme => theme.id === savedHomeTheme)) setHomeTheme(savedHomeTheme as HomeTheme);
-      const l = localStorage.getItem("atlas-lang");
-      if (l === "pt" || l === "en" || l === "es") setLang(l);
-      else setLanguageSetup(true);
-    } catch {
-      historyRef.current = [empty]; historyIndexRef.current = 0; updateHistoryState();
-    }
-    setLoaded(true);
+    let cancelled = false;
+    const initialize = async () => {
+      try {
+        const stored = await readStoredSnapshot();
+        if (cancelled) return;
+        const initial = stored ? readMap(stored["map"] ?? stored) : empty;
+        if (stored && Array.isArray(stored["versions"])) setVersions(stored["versions"] as MapVersion[]);
+        if (stored && typeof stored["mapName"] === "string") setMapName(stored["mapName"]);
+        if (stored && typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]);
+        setData(initial);
+        setViewerReferenceNationId(initial.playerNationId ?? "");
+        historyRef.current = [initial];
+        historyIndexRef.current = 0;
+        updateHistoryState();
+        const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent);
+        const coarseSmallScreen = window.matchMedia("(pointer: coarse)").matches && window.matchMedia("(max-width: 900px)").matches;
+        setIsMobileDevice(mobileUA || coarseSmallScreen);
+        setDeviceMode(localStorage.getItem("worldforge-device-mode") === "celular" ? "celular" : localStorage.getItem("worldforge-device-mode") === "pc" ? "pc" : (mobileUA || coarseSmallScreen) ? "celular" : "pc");
+        const savedHomeTheme = localStorage.getItem("worldforge-home-theme");
+        if (savedHomeTheme && HOME_THEMES.some(theme => theme.id === savedHomeTheme)) setHomeTheme(savedHomeTheme as HomeTheme);
+        const l = localStorage.getItem("atlas-lang");
+        if (l === "pt" || l === "en" || l === "es") setLang(l);
+        else setLanguageSetup(true);
+      } catch {
+        if (!cancelled) { historyRef.current = [empty]; historyIndexRef.current = 0; updateHistoryState(); }
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    };
+    void initialize();
+    return () => { cancelled = true; };
   }, []);
   useEffect(() => { if (loaded) localStorage.setItem("worldforge-device-mode", deviceMode); }, [deviceMode, loaded]);
   useEffect(() => { if (loaded) localStorage.setItem("worldforge-home-theme", homeTheme); }, [homeTheme, loaded]);
@@ -239,11 +300,9 @@ export default function MapApp() {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const save = () => {
       if (cancelled) return;
-      try {
-        localStorage.setItem(KEY, JSON.stringify({ map: data, mapName, mapDescription, versions }));
-      } catch {
-        setNotice(t.storageFull);
-      }
+      void writeStoredSnapshot({ map: data, mapName, mapDescription, versions }).catch(() => {
+        if (!cancelled) setNotice(t.storageFull);
+      });
     };
     // Avoid serializing the entire map in the same frame as a brush release.
     const idleWindow = window as Window & {
@@ -827,7 +886,7 @@ export default function MapApp() {
         </div>
         <div className="mt-6 flex items-center gap-3"><Settings className="h-4 w-4 text-muted-foreground"/><select aria-label={t.settings} className="field" value={homeTheme} onChange={e => setHomeTheme(e.target.value as HomeTheme)}>{HOME_THEMES.map(theme => <option key={theme.id} value={theme.id}>{theme.id === "atlas" ? "Atlas" : theme.id === "midnight" ? tx("Noturno", "Midnight", "Nocturno") : theme.id === "parchment" ? tx("Pergaminho", "Parchment", "Pergamino") : theme.id === "ocean" ? tx("Oceano", "Ocean", "Océano") : tx("Floresta", "Forest", "Bosque")}</option>)}</select></div>
         <div className="mt-6 grid gap-2">
-          <Button variant="outline" className="h-auto justify-start gap-4 rounded-lg px-4 py-4 text-left" onClick={() => { try { const saved = localStorage.getItem(KEY); if (saved) { const stored = JSON.parse(saved) as Record<string, unknown>; setData(readMap(stored["map"] ?? stored)); if (typeof stored["mapName"] === "string") setMapName(stored["mapName"]); if (typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]); if (Array.isArray(stored["versions"])) setVersions(stored["versions"] as MapVersion[]); } else { setData(empty); setMapName("Meu mundo"); setMapDescription(""); } } catch { setData(empty); } setTool("mover"); setSel(null); setPanelOpen(false); setIsLiveMap(false); setMode("edit"); }}>
+          <Button variant="outline" className="h-auto justify-start gap-4 rounded-lg px-4 py-4 text-left" onClick={async () => { try { const stored = await readStoredSnapshot(); if (stored) { setData(readMap(stored["map"] ?? stored)); if (typeof stored["mapName"] === "string") setMapName(stored["mapName"]); if (typeof stored["mapDescription"] === "string") setMapDescription(stored["mapDescription"]); if (Array.isArray(stored["versions"])) setVersions(stored["versions"] as MapVersion[]); } else { setData(empty); setMapName("Meu mundo"); setMapDescription(""); } } catch { setData(empty); } setTool("mover"); setSel(null); setPanelOpen(false); setIsLiveMap(false); setMode("edit"); }}>
             <span className={`inline-flex p-2 ${activeHomeTheme.accent}`}><Pencil className="h-5 w-5" /></span>
             <strong className="block">{tx("Modo de edição", "Editing mode", "Modo de edición")}</strong>
           </Button>
