@@ -207,11 +207,49 @@ export default function MapApp() {
   const [brush, setBrush] = useState<string | null>(null);
   const [sel, setSel] = useState<Sel>(null);
   useEffect(() => { setEntityTab("overview"); setFlagUrl(""); setMarkerPhotoUrl(""); }, [sel?.id]);
-  const [view, setView] = useState({ x: 20, y: 20, z: 0.5 });
+  type MapView = { x: number; y: number; z: number };
+  const [view, setViewState] = useState<MapView>({ x: 20, y: 20, z: 0.5 });
   const [draft, setDraft] = useState<[number, number][]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const viewRef = useRef(view);
-  viewRef.current = view;
+  const viewFrame = useRef<number | null>(null);
+  const wheelCommitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setView = (next: MapView | ((previous: MapView) => MapView)) => {
+    const resolved = typeof next === "function" ? next(viewRef.current) : next;
+    viewRef.current = resolved;
+    setViewState(resolved);
+  };
+  const applyViewDuringGesture = (next: MapView) => {
+    viewRef.current = next;
+    if (viewFrame.current !== null) return;
+    viewFrame.current = requestAnimationFrame(() => {
+      viewFrame.current = null;
+      const current = viewRef.current;
+      if (svgRef.current) {
+        svgRef.current.style.transform = `translate(${current.x}px,${current.y}px) scale(${current.z})`;
+      }
+    });
+  };
+  const commitView = () => {
+    if (wheelCommitTimer.current !== null) {
+      clearTimeout(wheelCommitTimer.current);
+      wheelCommitTimer.current = null;
+    }
+    if (viewFrame.current !== null) {
+      cancelAnimationFrame(viewFrame.current);
+      viewFrame.current = null;
+    }
+    const current = viewRef.current;
+    if (svgRef.current) {
+      svgRef.current.style.transform = `translate(${current.x}px,${current.y}px) scale(${current.z})`;
+    }
+    setView(current);
+  };
+  useEffect(() => () => {
+    if (viewFrame.current !== null) cancelAnimationFrame(viewFrame.current);
+    if (wheelCommitTimer.current !== null) clearTimeout(wheelCommitTimer.current);
+  }, []);
   const drag = useRef<{ mode: "pan" | "paint"; sx: number; sy: number; vx: number; vy: number } | { mode: "entity"; entityKind: "marker" | "comment"; id: string; sx: number; sy: number; wx: number; wy: number } | null>(null);
   const touchPoints = useRef(new Map<number, { x: number; y: number }>());
   const pinchStart = useRef<{ distance: number; zoom: number; worldX: number; worldY: number } | null>(null);
@@ -351,7 +389,12 @@ export default function MapApp() {
       const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1);
       const z = Math.min(4, Math.max(0.05, v.z * Math.exp(-dy * 0.0015)));
       const r = el.getBoundingClientRect(); const px = e.clientX - r.left, py = e.clientY - r.top; const k = z / v.z;
-      setView({ z, x: px - (px - v.x) * k, y: py - (py - v.y) * k });
+      applyViewDuringGesture({ z, x: px - (px - v.x) * k, y: py - (py - v.y) * k });
+      if (wheelCommitTimer.current !== null) clearTimeout(wheelCommitTimer.current);
+      wheelCommitTimer.current = setTimeout(() => {
+        wheelCommitTimer.current = null;
+        commitView();
+      }, 120);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -450,6 +493,7 @@ export default function MapApp() {
     const finished = drag.current;
     drag.current = null;
     lastPaint.current = null;
+    commitView();
     if (finished?.mode === "paint") finishPaint();
   };
   const fitMap = () => {
@@ -494,7 +538,7 @@ export default function MapApp() {
       }
     }
     if (mode === "view") {
-      drag.current = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
+      drag.current = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: viewRef.current.x, vy: viewRef.current.y };
       const c = cellAt(e.clientX, e.clientY);
       const cellKey = c ? `${c[0]},${c[1]}` : null;
       const nationId = cellKey ? data.tiles[cellKey] : undefined;
@@ -541,16 +585,23 @@ export default function MapApp() {
     if (deviceMode === "celular" && e.pointerType === "touch" && touchPoints.current.has(e.pointerId)) {
       touchPoints.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       const pts = [...touchPoints.current.values()]; const a = pts[0], b = pts[1], initial = pinchStart.current; const bounds = ref.current?.getBoundingClientRect();
-      if (pts.length >= 2 && a && b && initial) { const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)); const z = Math.max(0.05, Math.min(4, initial.zoom * distance / initial.distance)); const midX = (a.x + b.x) / 2 - (bounds?.left ?? 0), midY = (a.y + b.y) / 2 - (bounds?.top ?? 0); setView({ z, x: midX - initial.worldX * z, y: midY - initial.worldY * z }); return; }
+      if (pts.length >= 2 && a && b && initial) { const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)); const z = Math.max(0.05, Math.min(4, initial.zoom * distance / initial.distance)); const midX = (a.x + b.x) / 2 - (bounds?.left ?? 0), midY = (a.y + b.y) / 2 - (bounds?.top ?? 0); applyViewDuringGesture({ z, x: midX - initial.worldX * z, y: midY - initial.worldY * z }); return; }
     }
     const d = drag.current;
     if (d?.mode === "paint") { paint(e.clientX, e.clientY); return; }
+    if (d?.mode === "pan") {
+      applyViewDuringGesture({
+        ...viewRef.current,
+        x: d.vx + e.clientX - d.sx,
+        y: d.vy + e.clientY - d.sy
+      });
+      return;
+    }
     const [wx, wy] = toWorld(e.clientX, e.clientY);
     const nextCursor = { x: (Math.floor(wx / CELL) + 0.5) * CELL, y: (Math.floor(wy / CELL) + 0.5) * CELL };
     setCursorPos(previous => previous?.x === nextCursor.x && previous?.y === nextCursor.y ? previous : nextCursor);
     if (!d) return;
-    if (d.mode === "pan") setView(v => ({ ...v, x: d.vx + e.clientX - d.sx, y: d.vy + e.clientY - d.sy }));
-    else if (d.mode === "entity") {
+    if (d.mode === "entity") {
       const x = d.wx + (e.clientX - d.sx) / viewRef.current.z;
       const y = d.wy + (e.clientY - d.sy) / viewRef.current.z;
       if (d.entityKind === "marker") upMarker(d.id, { x, y });
@@ -1148,7 +1199,7 @@ export default function MapApp() {
         style={{ cursor: tool === "mover" ? "grab" : "crosshair" }}
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={e => { if (drag.current?.mode === "paint") paint(e.clientX, e.clientY); if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); if (touchPoints.current.size < 2) pinchStart.current = null; } stopDrag(); }} onPointerCancel={e => { if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); pinchStart.current = null; } stopDrag(); }} onLostPointerCapture={stopDrag} onPointerLeave={() => setCursorPos(null)}
         onDoubleClick={finishLine} onContextMenu={e => e.preventDefault()}>
-        <svg className="absolute left-0 top-0 overflow-visible" width={W} height={H}
+        <svg ref={svgRef} className="absolute left-0 top-0 overflow-visible" width={W} height={H}
           style={{ transform: `translate(${view.x}px,${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
           <rect width={W} height={H} className="fill-background" />
           <defs><clipPath id="map-bounds"><rect width={W} height={H} /></clipPath></defs>
