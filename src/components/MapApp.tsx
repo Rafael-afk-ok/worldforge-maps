@@ -1122,10 +1122,17 @@ export default function MapApp() {
               const width = Math.max(firstLine.length, secondLine.length) * fontSize * 0.62 + (n.flag ? 40 * (fontSize / 24) : 0);
               const height = fontSize * (hasTwoLines ? 2.2 : 1.4) + (n.flag ? 24 * (fontSize / 24) : 0);
               // Se a área de rótulo colidir com um rótulo já aceito, mantém apenas o maior.
-              const overlaps = accepted.some(existing =>
-                Math.abs(component.centerX - existing.component.centerX) < (width + existing.width) / 2 + 4 &&
-                Math.abs(component.centerY - existing.component.centerY) < (height + existing.height) / 2 + 4
-              );
+              // Além da colisão do texto, agrupa ilhas muito próximas para não repetir o nome em cada fragmento.
+              const proximityLimit = CELL * 6;
+              const overlaps = accepted.some(existing => {
+                const dx = component.centerX - existing.component.centerX;
+                const dy = component.centerY - existing.component.centerY;
+                const closeIslands = Math.hypot(dx, dy) < proximityLimit;
+                const labelsOverlap =
+                  Math.abs(dx) < (width + existing.width) / 2 + 4 &&
+                  Math.abs(dy) < (height + existing.height) / 2 + 4;
+                return closeIslands || labelsOverlap;
+              });
               if (!overlaps) accepted.push({ component, fontSize, width, height });
             }
             return accepted.map(({ component, fontSize }, index) => {
