@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { expandTiles, strokeCells, territoryPath } from './map-tools';
+import { cellsPath, expandTiles, strokeCells, territoryPath } from './map-tools';
 
 describe('map painting', () => {
+  it('renders the exact brush cells without offset or diagonal extras', () => {
+    const cells = strokeCells([4.9, 4.9], [4.9, 4.9], 1);
+    expect(cells.has('5,5')).toBe(false);
+    expect(cellsPath(cells).match(/M/g)?.length).toBe(5);
+    expect(cellsPath(['4,4'])).toBe('M8,8h2v2h-2Z');
+  });
   it('fills every cell during a fast stroke', () => {
     const cells = strokeCells([1.5, 2.5], [12.5, 2.5], 0);
     for (let x = 1; x <= 12; x++) expect(cells.has(`${x},2`)).toBe(true);

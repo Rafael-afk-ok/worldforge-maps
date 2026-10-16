@@ -6,6 +6,7 @@ export const LANGS: { id: Lang; label: string }[] = [
 ];
 
 const pt = {
+  country: "País", noCountry: "Sem país vinculado", regionName: "Nome da região", anthem: "Hino", anthemUrl: "Link do YouTube ou áudio HTTPS", cityPhotos: "Fotos das cidades", openOriginal: "Abrir original", foodProduction: "Produção de comida", foodConsumption: "Consumo de comida", foodBalance: "Saldo alimentar", locations: "Localidades", clearSelection: "Limpar seleção", addPhotos: "Adicionar fotos", apply: "Aplicar", drawRegion: "Delimitar região", invalidUrl: "Use um link HTTPS válido.", alliances: "Alianças", wars: "Guerras", relations: "Relações", comparison: "Comparação", layers: "Camadas", countries: "Países",
   overview: "Visão geral", appearance: "Aparência", regionsTab: "Regiões", diplomacyTab: "Diplomacia", photosTab: "Fotos", economyTab: "Economia", positionTab: "Posição", worldStatus: "Status do mundo", mainMenu: "Menu principal", noPhoto: "Nenhuma foto adicionada.",
   appName: "Frontiers Map Simulator",
   tools: "Ferramentas", close: "Fechar", mover: "✋ Mover / Selecionar", pintar: "🖌 Pintar território", balde: "🪣 Preencher área", apagar: "🧽 Apagar",
@@ -35,6 +36,7 @@ const pt = {
 export type Dict = typeof pt;
 
 const en: Dict = {
+  country: "Country", noCountry: "No linked country", regionName: "Region name", anthem: "Anthem", anthemUrl: "YouTube link or HTTPS audio", cityPhotos: "City photos", openOriginal: "Open original", foodProduction: "Food production", foodConsumption: "Food consumption", foodBalance: "Food balance", locations: "Locations", clearSelection: "Clear selection", addPhotos: "Add photos", apply: "Apply", drawRegion: "Draw region", invalidUrl: "Use a valid HTTPS link.", alliances: "Alliances", wars: "Wars", relations: "Relations", comparison: "Comparison", layers: "Layers", countries: "Countries",
   overview: "Overview", appearance: "Appearance", regionsTab: "Regions", diplomacyTab: "Diplomacy", photosTab: "Photos", economyTab: "Economy", positionTab: "Position", worldStatus: "World status", mainMenu: "Main menu", noPhoto: "No photo added.",
   appName: "Frontiers Map Simulator",
   tools: "Tools", close: "Close", mover: "✋ Move / Select", pintar: "🖌 Paint territory", balde: "🪣 Fill area", apagar: "🧽 Erase",
@@ -63,6 +65,7 @@ const en: Dict = {
 };
 
 const es: Dict = {
+  country: "País", noCountry: "Sin país vinculado", regionName: "Nombre de la región", anthem: "Himno", anthemUrl: "Enlace de YouTube o audio HTTPS", cityPhotos: "Fotos de ciudades", openOriginal: "Abrir original", foodProduction: "Producción de alimentos", foodConsumption: "Consumo de alimentos", foodBalance: "Balance alimentario", locations: "Localidades", clearSelection: "Borrar selección", addPhotos: "Añadir fotos", apply: "Aplicar", drawRegion: "Delimitar región", invalidUrl: "Usa un enlace HTTPS válido.", alliances: "Alianzas", wars: "Guerras", relations: "Relaciones", comparison: "Comparación", layers: "Capas", countries: "Países",
   overview: "Vista general", appearance: "Apariencia", regionsTab: "Regiones", diplomacyTab: "Diplomacia", photosTab: "Fotos", economyTab: "Economía", positionTab: "Posición", worldStatus: "Estado del mundo", mainMenu: "Menú principal", noPhoto: "No hay fotos añadidas.",
   appName: "Frontiers Map Simulator",
   tools: "Herramientas", close: "Cerrar", mover: "✋ Mover / Seleccionar", pintar: "🖌 Pintar territorio", balde: "🪣 Rellenar área", apagar: "🧽 Borrar",
