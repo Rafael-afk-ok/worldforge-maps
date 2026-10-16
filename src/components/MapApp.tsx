@@ -1106,21 +1106,34 @@ export default function MapApp() {
           {showRegionNames && layers.labels && (!isLiveMap || mode !== "view" || view.z >= 0.45) && regionTerritories.filter(item => visibleNationIds.has(item.region.nationId) && item.keys.length > 0 && (!isLiveMap || mode !== "view" || item.keys.length >= 4)).map(({ region, keys, centerX, centerY }) => <text key={`region-label-${region.id}`} x={centerX} y={centerY} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>)}
           {showNationNames && layers.labels && filter !== "alianças" && (!isLiveMap || mode !== "view" || view.z >= 0.2) && territories.filter(t => visibleNationIds.has(t.nation.id)).map(({ nation: n, keys: ks, centerX, centerY, components = [] }) => {
             if (!ks.length || (isLiveMap && mode === "view" && view.z < 0.35 && ks.length < 20)) return null;
-            const nameLocations = components.length ? components.filter((component, index) => index === 0 || component.keys.length >= 4) : [{ keys: ks, centerX, centerY }];
-            return nameLocations.map((component, index) => {
-            const x = component.centerX, y = component.centerY;
-
-            // Escala conforme tamanho da área territorial (com teto para não ficar gigante)
-            const area = component.keys.length;
-            const baseFontSize = Math.max(12, Math.min(36, Math.round(10 + Math.sqrt(area) * 0.12)));
-            // Quando a visualização estiver de longe, comprime a escala para manter o mapa legível
-            const clampedFontSize = Math.max(10, Math.min(baseFontSize, Math.round(baseFontSize * Math.min(1, Math.max(0.4, view.z * 1.4)))));
-            const flagScale = clampedFontSize / 24;
-
+            const candidates = (components.length ? components : [{ keys: ks, centerX, centerY }])
+              .filter((component, index) => index === 0 || component.keys.length >= 4);
+            const largestArea = Math.max(1, candidates[0]?.keys.length ?? ks.length);
             const nameParts = n.name.trim().split(/\s+/);
             const hasTwoLines = nameParts.length > 1;
             const firstLine = hasTwoLines ? nameParts.slice(0, -1).join(" ") : n.name;
             const secondLine = hasTwoLines ? nameParts[nameParts.length - 1] : "";
+            const mainFontSize = Math.max(12, Math.min(36, Math.round(10 + Math.sqrt(largestArea) * 0.12)));
+            const accepted: { component: typeof candidates[number]; fontSize: number; width: number; height: number }[] = [];
+            for (const [index, component] of candidates.entries()) {
+              // Ilhas menores recebem nomes proporcionalmente menores em relação à massa principal.
+              const relativeScale = Math.sqrt(component.keys.length / largestArea);
+              const fontSize = index === 0 ? mainFontSize : Math.max(7, Math.round(mainFontSize * relativeScale));
+              const width = Math.max(firstLine.length, secondLine.length) * fontSize * 0.62 + (n.flag ? 40 * (fontSize / 24) : 0);
+              const height = fontSize * (hasTwoLines ? 2.2 : 1.4) + (n.flag ? 24 * (fontSize / 24) : 0);
+              // Se a área de rótulo colidir com um rótulo já aceito, mantém apenas o maior.
+              const overlaps = accepted.some(existing =>
+                Math.abs(component.centerX - existing.component.centerX) < (width + existing.width) / 2 + 4 &&
+                Math.abs(component.centerY - existing.component.centerY) < (height + existing.height) / 2 + 4
+              );
+              if (!overlaps) accepted.push({ component, fontSize, width, height });
+            }
+            return accepted.map(({ component, fontSize }, index) => {
+            const x = component.centerX, y = component.centerY;
+
+            // Reduz a escala com o zoom sem impor um tamanho mínimo que apague a diferença entre ilhas.
+            const clampedFontSize = Math.max(6, Math.min(fontSize, Math.round(fontSize * Math.min(1, Math.max(0.4, view.z * 1.4)))));
+            const flagScale = clampedFontSize / 24;
             return (
               <g key={`${n.id}-label-${index}`} pointerEvents="none">
                 {n.flag && <image href={n.flag} x={x - 20 * flagScale} y={y - (hasTwoLines ? 42 : 36) * flagScale} width={40 * flagScale} height={24 * flagScale} preserveAspectRatio="xMidYMid meet" />}
