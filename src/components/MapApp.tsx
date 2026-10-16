@@ -407,17 +407,22 @@ export default function MapApp() {
     const pending = pendingPaint.current;
     if (pending.size) {
       const tiles = { ...data.tiles };
-      const regionTiles = { ...(data.regionTiles ?? {}) };
+      const existingRegionTiles = data.regionTiles ?? {};
+      let regionTiles: Record<string, string> | undefined;
       for (const [cell, value] of pending) {
         if (value.nationId === null) delete tiles[cell]; else tiles[cell] = value.nationId;
-        if (value.regionId === null) delete regionTiles[cell]; else regionTiles[cell] = value.regionId;
+        const previousRegion = existingRegionTiles[cell];
+        if (previousRegion !== value.regionId) {
+          regionTiles ??= { ...existingRegionTiles };
+          if (value.regionId === null) delete regionTiles[cell]; else regionTiles[cell] = value.regionId;
+        }
       }
       const changes: [string, string | null, string | null][] = [];
       for (const [cell, value] of pending) {
         const previousNation = data.tiles[cell] ?? null;
         if (previousNation !== value.nationId) changes.push([cell, previousNation, value.nationId]);
       }
-      const nextData = { ...data, tiles, regionTiles };
+      const nextData = { ...data, tiles, regionTiles: regionTiles ?? data.regionTiles };
       pendingTileIndexUpdate.current = { from: data.tiles, to: tiles, changes };
       setData(nextData);
       pushHistory(nextData);
