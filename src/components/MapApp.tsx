@@ -1123,12 +1123,13 @@ export default function MapApp() {
             const firstLine = hasTwoLines ? nameParts.slice(0, -1).join(" ") : n.name;
             const secondLine = hasTwoLines ? nameParts[nameParts.length - 1] : "";
             return (
-              <g key={n.id} pointerEvents="none">
+              <g key={`${n.id}-label-${index}`} pointerEvents="none">
                 {n.flag && <image href={n.flag} x={x - 20 * flagScale} y={y - (hasTwoLines ? 42 : 36) * flagScale} width={40 * flagScale} height={24 * flagScale} preserveAspectRatio="xMidYMid meet" />}
                 <text x={x} y={y - (hasTwoLines ? clampedFontSize * 0.3 : 0)} textAnchor="middle" fontSize={clampedFontSize} className="fill-foreground font-display uppercase" opacity={0.85} paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{firstLine}</text>
                 {hasTwoLines && <text x={x} y={y + clampedFontSize * 0.85} textAnchor="middle" fontSize={clampedFontSize} className="fill-foreground font-display uppercase" opacity={0.85} paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{secondLine}</text>}
               </g>
             );
+            });
           })}
           {layers.labels && filter === "alianças" && alliances.map(a => { const members = territories.filter(t => a.nationIds.includes(t.nation.id) && t.keys.length > 0); const count = members.reduce((sum, t) => sum + t.keys.length, 0); if (!count) return null; const x = members.reduce((sum, t) => sum + t.centerX * t.keys.length, 0) / count, y = members.reduce((sum, t) => sum + t.centerY * t.keys.length, 0) / count; return <g key={a.id} pointerEvents="none">{a.image && <image href={a.image} x={x - 24} y={y - 54} width={48} height={32} preserveAspectRatio="xMidYMid meet" />}<text x={x} y={y} textAnchor="middle" fontSize={Math.max(12, Math.min(28, 10 + Math.sqrt(count) * 0.12))} className="fill-foreground font-display uppercase" paintOrder="stroke" stroke="var(--background)" strokeWidth={4}>{a.name}</text></g>; })}
           {mode === "edit" && cursorPos && (tool === "pintar" || tool === "apagar" || tool === "regiao") && <path data-brush-cursor d={cellsPath(strokeCells([cursorPos.x / CELL, cursorPos.y / CELL], [cursorPos.x / CELL, cursorPos.y / CELL], brushSize - 1))} fill={tool === "apagar" ? "var(--destructive)" : tool === "regiao" ? selectedRegion?.color : nationById(brush ?? "")?.color ?? "var(--primary)"} fillOpacity={0.25} pointerEvents="none" />}
