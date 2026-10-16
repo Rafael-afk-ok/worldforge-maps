@@ -842,7 +842,14 @@ export default function MapApp() {
     return relation === filter;
   });
   const visibleNationIds = new Set(visibleNations.map(nation => nation.id));
-  const territoryPathCache = useRef(new Map<string, { keys: string[]; smooth: boolean; path: string }>());
+  const territoryPathCache = useRef(new Map<string, {
+    keys: string[];
+    smooth: boolean;
+    path: string;
+    centerX: number;
+    centerY: number;
+    components: { keys: string[]; centerX: number; centerY: number }[];
+  }>());
   const territoryGeometry = useMemo(() => {
     const keysByNation = new Map<string, string[]>();
     for (const [key, nationId] of Object.entries(data.tiles)) {
@@ -855,14 +862,19 @@ export default function MapApp() {
     const activeNationIds = new Set(keysByNation.keys());
     for (const nationId of cache.keys()) if (!activeNationIds.has(nationId)) cache.delete(nationId);
     for (const [nationId, keys] of keysByNation) {
-      let sx = 0, sy = 0;
-      for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
       const previous = cache.get(nationId);
       const unchanged = previous && previous.smooth === data.smooth && previous.keys.length === keys.length && previous.keys.every((key, index) => key === keys[index]);
-      const path = unchanged ? previous.path : territoryPath(keys, data.smooth);
-      if (!unchanged) cache.set(nationId, { keys, smooth: data.smooth, path });
+      if (unchanged && previous) {
+        // Reuse expensive outlines, centroids, and connected-component labels for unchanged nations.
+        geometry.set(nationId, { keys: previous.keys, centerX: previous.centerX, centerY: previous.centerY, path: previous.path, components: previous.components });
+        continue;
+      }
 
-      // Divide o território em massas conectadas de células para repetir o nome em ilhas e enclaves separados.
+      let sx = 0, sy = 0;
+      for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
+      const path = territoryPath(keys, data.smooth);
+
+      // Divide only changed territories into connected masses for labels on islands and enclaves.
       const remaining = new Set(keys);
       const components: { keys: string[]; centerX: number; centerY: number }[] = [];
       while (remaining.size) {
@@ -884,7 +896,9 @@ export default function MapApp() {
         components.push({ keys: componentKeys, centerX: cx / componentKeys.length, centerY: cy / componentKeys.length });
       }
       components.sort((a, b) => b.keys.length - a.keys.length);
-      geometry.set(nationId, { keys, centerX: sx / keys.length, centerY: sy / keys.length, path, components });
+      const centerX = sx / keys.length, centerY = sy / keys.length;
+      cache.set(nationId, { keys, smooth: data.smooth, path, centerX, centerY, components });
+      geometry.set(nationId, { keys, centerX, centerY, path, components });
     }
     return geometry;
   }, [data.tiles, data.smooth]);
