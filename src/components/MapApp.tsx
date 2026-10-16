@@ -869,6 +869,7 @@ export default function MapApp() {
     const tileIndex = territoryTileIndex.current;
     const pendingUpdate = pendingTileIndexUpdate.current;
     let indexedTiles: Map<string, Set<string>>;
+    let changedNationIds = new Set<string>();
     if (tileIndex?.tiles === data.tiles) {
       indexedTiles = tileIndex.keysByNation;
     } else if (tileIndex && pendingUpdate?.from === tileIndex.tiles && pendingUpdate.to === data.tiles) {
@@ -882,6 +883,7 @@ export default function MapApp() {
           indexedTiles.set(nationId, cells);
           writableNations.add(nationId);
         }
+        changedNationIds.add(nationId);
         return cells!;
       };
       for (const [cell, previousNation, nextNation] of pendingUpdate.changes) {
@@ -904,27 +906,27 @@ export default function MapApp() {
       }
       territoryTileIndex.current = { tiles: data.tiles, keysByNation: indexedTiles };
       if (pendingUpdate?.to === data.tiles) pendingTileIndexUpdate.current = null;
+      changedNationIds = new Set(indexedTiles.keys());
     }
-    const keysByNation = new Map<string, string[]>();
-    for (const [nationId, cells] of indexedTiles) keysByNation.set(nationId, [...cells]);
+
     const geometry = new Map<string, { keys: string[]; centerX: number; centerY: number; path: string; components: { keys: string[]; centerX: number; centerY: number }[] }>();
     const cache = territoryPathCache.current;
-    const activeNationIds = new Set(keysByNation.keys());
+    const activeNationIds = new Set(indexedTiles.keys());
     for (const nationId of cache.keys()) if (!activeNationIds.has(nationId)) cache.delete(nationId);
-    for (const [nationId, keys] of keysByNation) {
+    for (const [nationId, cells] of indexedTiles) {
       const previous = cache.get(nationId);
-      const unchanged = previous && previous.smooth === data.smooth && previous.keys.length === keys.length && previous.keys.every((key, index) => key === keys[index]);
-      if (unchanged && previous) {
-        // Reuse expensive outlines, centroids, and connected-component labels for unchanged nations.
+      if (previous && !changedNationIds.has(nationId) && previous.smooth === data.smooth && previous.keys.length === cells.size) {
+        // Unchanged nations reuse their existing cell array, outline, centroid, and connected-component labels.
         geometry.set(nationId, { keys: previous.keys, centerX: previous.centerX, centerY: previous.centerY, path: previous.path, components: previous.components });
         continue;
       }
 
+      const keys = [...cells];
       let sx = 0, sy = 0;
       for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
       const path = territoryPath(keys, data.smooth);
 
-      // Divide only changed territories into connected masses for labels on islands and enclaves.
+      // Divide only changed territories into connected masses of cells for island and enclave labels.
       const remaining = new Set(keys);
       const components: { keys: string[]; centerX: number; centerY: number }[] = [];
       while (remaining.size) {
