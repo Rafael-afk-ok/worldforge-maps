@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { FloatingWindow } from "@/components/FloatingWindow";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil, Hand, Paintbrush, PaintBucket, Eraser, MapPinned, MessageSquare, Star, Building2, Shield, Anchor, Route, Waves } from "lucide-react";
+import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, BarChart3, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil, Hand, Paintbrush, PaintBucket, Eraser, MapPinned, MessageSquare, Star, Building2, Shield, Anchor, Route, Waves } from "lucide-react";
 import { cellsPath, strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 import { locationPhotos, locationTotals, safeMediaUrl } from "@/lib/map-entities";
@@ -115,7 +115,6 @@ export default function MapApp() {
   const [mapDescription, setMapDescription] = useState("");
   const [versions, setVersions] = useState<MapVersion[]>([]);
   const [deviceMode, setDeviceMode] = useState<"pc" | "celular">("pc");
-  const [orientationPortrait, setOrientationPortrait] = useState(false);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
 
   const historyRef = useRef<Data[]>([]);
@@ -207,7 +206,6 @@ export default function MapApp() {
   }, []);
   useEffect(() => { if (loaded) localStorage.setItem("worldforge-device-mode", deviceMode); }, [deviceMode, loaded]);
   useEffect(() => { if (loaded) localStorage.setItem("worldforge-home-theme", homeTheme); }, [homeTheme, loaded]);
-  useEffect(() => { const check = () => setOrientationPortrait(window.innerHeight > window.innerWidth); check(); window.addEventListener("resize", check); window.addEventListener("orientationchange", check); return () => { window.removeEventListener("resize", check); window.removeEventListener("orientationchange", check); }; }, []);
   useEffect(() => { document.documentElement.lang = lang === "pt" ? "pt-BR" : lang; if (loaded && !languageSetup) localStorage.setItem("atlas-lang", lang); }, [lang, loaded, languageSetup]);
   useEffect(() => {
     const changed = () => {
@@ -370,17 +368,12 @@ export default function MapApp() {
     setView(v => { const z = Math.min(4, Math.max(0.05, v.z * factor)); const k = z / v.z;
       return { z, x: r.width / 2 - (r.width / 2 - v.x) * k, y: r.height / 2 - (r.height / 2 - v.y) * k }; });
   };
-  const enterFullscreen = async (lockLandscape = false) => {
+  const enterFullscreen = async () => {
     setPanelOpen(false);
     setSel(null);
     try {
       if (appRef.current?.requestFullscreen && !document.fullscreenElement) await appRef.current.requestFullscreen();
       setFullscreen(true);
-      if (lockLandscape) {
-        const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
-        if (orientation?.lock) await orientation.lock("landscape");
-        else setNotice(t.rotate);
-      }
     } catch {
       setFullscreen(true);
       setNotice(t.rotateFallback);
@@ -393,7 +386,7 @@ export default function MapApp() {
       setFullscreen(false);
       return;
     }
-    await enterFullscreen(true);
+    await enterFullscreen();
   };
 
   const onDown = (e: React.PointerEvent) => {
@@ -855,7 +848,6 @@ export default function MapApp() {
           {regionPickerTab === "nations" ? <div className="grid gap-1">{data.nations.map(nation => <button type="button" key={nation.id} className={`flex w-full items-center gap-2 rounded-md border px-2 py-2 text-left text-sm hover:bg-accent ${selNation?.id === nation.id ? "border-primary bg-accent" : "border-transparent"}`} onClick={() => { setSel({ kind: "nation", id: nation.id }); setSelectedRegionId(""); setRegionPickerTab("regions"); }}><span className="inline-block h-3 w-3 shrink-0 rounded-sm" style={{ background: nation.color }} /> <span className="min-w-0 flex-1 truncate">{nation.name}</span><span className="text-xs opacity-60">{(data.regions ?? []).filter(region => region.nationId === nation.id).length}</span></button>)}{data.nations.length === 0 && <p className="p-3 text-sm opacity-70">{tx("Nenhum país criado.", "No nations created.", "No hay países creados.")}</p>}</div> : <div className="grid gap-1">{!selNation ? <div className="p-3 text-sm opacity-70">{tx("Volte à aba Nações e escolha um país primeiro.", "Go to Nations and choose a country first.", "Vuelve a Naciones y elige primero un país.")}<Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => setRegionPickerTab("nations")}>{tx("Escolher país", "Choose nation", "Elegir país")}</Button></div> : <><p className="mb-1 px-1 text-xs opacity-70">{tx("País:", "Nation:", "País:")} {selNation.name}</p>{(data.regions ?? []).filter(region => region.nationId === selNation.id).map(region => <button type="button" key={region.id} className={`flex w-full items-center gap-2 rounded-md border px-2 py-2 text-left text-sm hover:bg-accent ${selectedRegionId === region.id ? "border-primary bg-accent" : "border-transparent"}`} onClick={() => { setSelectedRegionId(region.id); setTool("regiao"); setShowRegions(true); setRegionPickerOpen(false); setNotice(tx("Pincel ativo: pinte apenas territórios de " + selNation.name + " para atribuí-los à região " + region.name + ".", "Brush active: paint only " + selNation.name + " territory to assign it to " + region.name + ".", "Pincel activo: pinta solo territorio de " + selNation.name + " para asignarlo a la región " + region.name + ".")); }}><span className="inline-block h-3 w-3 shrink-0 rounded-sm" style={{ background: region.color }} /><span className="min-w-0 flex-1 truncate">{region.name}</span><span className="text-xs opacity-60">{regionTileCount(region.id)}</span></button>)}{!(data.regions ?? []).some(region => region.nationId === selNation.id) && <p className="p-3 text-sm opacity-70">{tx("Esse país ainda não tem regiões. Crie uma na aba do país.", "This nation has no regions yet. Create one in its country tab.", "Este país aún no tiene regiones. Crea una en su pestaña.")}</p>}</>}</div>}
         </div><div className="border-t p-2 text-xs opacity-70">{tx("Arraste pelo cabeçalho para mover esta janela.", "Drag the header to move this window.", "Arrastra el encabezado para mover esta ventana.")}</div>
       </div>}
-      {isMobileDevice && orientationPortrait && !languageSetup && <div className="absolute inset-0 z-[200] flex items-center justify-center bg-background p-6 text-center"><div className="max-w-sm"><Smartphone className="mx-auto mb-4 h-12 w-12" /><h2 className="font-display text-2xl">{lang === "pt" ? "Gire o celular" : lang === "es" ? "Gira el móvil" : "Rotate your phone"}</h2><p className="mt-2 text-sm text-muted-foreground">{lang === "pt" ? "O WorldForge Maps funciona no celular apenas na orientação horizontal. Gire o aparelho para continuar." : lang === "es" ? "WorldForge Maps en móviles solo funciona en orientación horizontal. Gira el dispositivo para continuar." : "WorldForge Maps on phones only works in landscape orientation. Rotate your device to continue."}</p><Button className="mt-4" onClick={() => void enterFullscreen(true)}>{lang === "pt" ? "Ativar paisagem" : lang === "es" ? "Activar horizontal" : "Enable landscape"}</Button></div></div>}
       {languageSetup && <div className="fixed inset-0 z-[300] flex items-center justify-center bg-background p-6"><div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-xl"><h2 className="font-display text-2xl font-semibold">{lang === "pt" ? "Escolha seu idioma" : lang === "es" ? "Elige tu idioma" : "Choose your language"}</h2><p className="mt-2 text-sm text-muted-foreground">{lang === "pt" ? "Selecione o idioma para usar o WorldForge Maps. Você poderá alterá-lo nas configurações." : lang === "es" ? "Selecciona el idioma de WorldForge Maps. Podrás cambiarlo en la configuración." : "Select the language for WorldForge Maps. You can change it later in Settings."}</p><div className="mt-5 grid gap-2">{LANGS.map(option => <Button key={option.id} variant={lang === option.id ? "default" : "outline"} className="w-full" onClick={() => setLang(option.id)}>{option.label}</Button>)}</div><Button className="mt-4 w-full" onClick={() => { localStorage.setItem("atlas-lang", lang); setLanguageSetup(false); }}>{lang === "pt" ? "Continuar" : lang === "es" ? "Continuar" : "Continue"}</Button></div></div>}
       <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => { void importJson(e.target.files?.[0]); e.target.value = ""; }} />
       {mode === "view" ? <aside className={`map-tools-panel viewer-menu flex shrink-0 flex-col gap-3 overflow-y-auto p-4 ${activeHomeTheme.panel} ${panelOpen ? "" : "panel-closed"}`}>
