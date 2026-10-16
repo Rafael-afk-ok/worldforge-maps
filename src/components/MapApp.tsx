@@ -213,6 +213,8 @@ export default function MapApp() {
   const ref = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const viewRef = useRef(view);
+  const committedViewRef = useRef(view);
+  committedViewRef.current = view;
   const viewFrame = useRef<number | null>(null);
   const wheelCommitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setView = (next: MapView | ((previous: MapView) => MapView)) => {
@@ -244,7 +246,8 @@ export default function MapApp() {
     if (svgRef.current) {
       svgRef.current.style.transform = `translate(${current.x}px,${current.y}px) scale(${current.z})`;
     }
-    setView(current);
+    const committed = committedViewRef.current;
+    if (current.x !== committed.x || current.y !== committed.y || current.z !== committed.z) setView(current);
   };
   useEffect(() => () => {
     if (viewFrame.current !== null) cancelAnimationFrame(viewFrame.current);
@@ -425,14 +428,28 @@ export default function MapApp() {
       const pendingValue = pending.get(cell);
       const currentNation = pendingValue ? pendingValue.nationId : (tiles[cell] ?? null);
       const currentRegion = pendingValue ? pendingValue.regionId : (regionTiles[cell] ?? null);
+      let nextNation = currentNation;
+      let nextRegion = currentRegion;
+
       if (tool === "regiao") {
-        if (selectedRegion && currentNation === selectedRegion.nationId) pending.set(cell, { nationId: currentNation, regionId: selectedRegion.id });
+        if (!selectedRegion || currentNation !== selectedRegion.nationId) continue;
+        nextRegion = selectedRegion.id;
       } else if (tool === "apagar") {
-        pending.set(cell, { nationId: null, regionId: null });
+        nextNation = null;
+        nextRegion = null;
       } else if (brush) {
+        nextNation = brush;
         const assignedRegion = currentRegion ? regionById.get(currentRegion) : undefined;
-        pending.set(cell, { nationId: brush, regionId: assignedRegion && assignedRegion.nationId !== brush ? null : currentRegion });
+        nextRegion = assignedRegion && assignedRegion.nationId !== brush ? null : currentRegion;
+      } else {
+        continue;
       }
+
+      // Do not preview or store cells that already have the requested values.
+      // This prevents same-nation strokes from darkening their own territory
+      // and keeps the pending stroke small for faster release.
+      if (nextNation === currentNation && nextRegion === currentRegion) continue;
+      pending.set(cell, { nationId: nextNation, regionId: nextRegion });
     }
     if (previewFrame.current === null) {
       previewFrame.current = requestAnimationFrame(() => {
@@ -450,34 +467,39 @@ export default function MapApp() {
     const pending = pendingPaint.current;
     if (pending.size) {
       const existingRegionTiles = data.regionTiles ?? {};
-      const changedNationCells: [string, string | null][] = [];
-      const changedRegionCells: [string, string | null][] = [];
+      const changedCells: { cell: string; nationId: string | null; regionId: string | null; nationChanged: boolean; regionChanged: boolean }[] = [];
+      let hasNationChanges = false;
+      let hasRegionChanges = false;
 
-      // Find actual changes first. If the stroke paints the same values, avoid
-      // cloning large map objects and creating a redundant history snapshot.
+      // Compare once, then clone only the layers that truly changed.
       for (const [cell, value] of pending) {
         const previousNation = data.tiles[cell] ?? null;
-        if (previousNation !== value.nationId) changedNationCells.push([cell, value.nationId]);
         const previousRegion = existingRegionTiles[cell] ?? null;
-        if (previousRegion !== value.regionId) changedRegionCells.push([cell, value.regionId]);
+        const nationChanged = previousNation !== value.nationId;
+        const regionChanged = previousRegion !== value.regionId;
+        if (!nationChanged && !regionChanged) continue;
+        changedCells.push({ cell, nationId: value.nationId, regionId: value.regionId, nationChanged, regionChanged });
+        hasNationChanges ||= nationChanged;
+        hasRegionChanges ||= regionChanged;
       }
 
-      if (changedNationCells.length || changedRegionCells.length) {
-        const tiles = changedNationCells.length ? { ...data.tiles } : data.tiles;
-        const regionTiles = changedRegionCells.length ? { ...existingRegionTiles } : data.regionTiles;
-        for (const [cell, nationId] of changedNationCells) {
-          if (nationId === null) delete tiles[cell]; else tiles[cell] = nationId;
-        }
-        if (regionTiles) {
-          for (const [cell, regionId] of changedRegionCells) {
-            if (regionId === null) delete regionTiles[cell]; else regionTiles[cell] = regionId;
+      if (changedCells.length) {
+        const tiles = hasNationChanges ? { ...data.tiles } : data.tiles;
+        const regionTiles = hasRegionChanges ? { ...existingRegionTiles } : data.regionTiles;
+        const indexChanges: [string, string | null, string | null][] = [];
+
+        for (const change of changedCells) {
+          if (change.nationChanged) {
+            if (change.nationId === null) delete tiles[change.cell]; else tiles[change.cell] = change.nationId;
+            indexChanges.push([change.cell, data.tiles[change.cell] ?? null, change.nationId]);
+          }
+          if (change.regionChanged && regionTiles) {
+            if (change.regionId === null) delete regionTiles[change.cell]; else regionTiles[change.cell] = change.regionId;
           }
         }
-        const changes = changedNationCells.map(([cell, nextNation]) => [cell, data.tiles[cell] ?? null, nextNation] as [string, string | null, string | null]);
+
         const nextData = { ...data, tiles, regionTiles };
-        if (changedNationCells.length) {
-          pendingTileIndexUpdate.current = { from: data.tiles, to: tiles, changes };
-        }
+        if (indexChanges.length) pendingTileIndexUpdate.current = { from: data.tiles, to: tiles, changes: indexChanges };
         setData(nextData);
         pushHistory(nextData);
       }
@@ -1207,7 +1229,7 @@ export default function MapApp() {
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {layers.territories && territories.filter(t => visibleNationIds.has(t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
           {showRegions && layers.territories && regionTerritories.filter(item => visibleNationIds.has(item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={`region-${region.id}`} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={data.regionOpacity ?? 0.45} stroke={region.color} strokeOpacity={data.regionOpacity ?? 0.45} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
-          <path ref={previewPaintPath} data-paint-preview d="" fill={tool === "regiao" ? selectedRegion?.color : tool === "apagar" ? "var(--background)" : nationById(brush ?? "")?.color} fillOpacity={tool === "regiao" ? data.regionOpacity : tool === "apagar" ? 1 : 0.6} pointerEvents="none" visibility={mode === "edit" ? "visible" : "hidden"} />
+          <path ref={previewPaintPath} data-paint-preview d="" fill={tool === "apagar" ? "none" : tool === "regiao" ? selectedRegion?.color : nationById(brush ?? "")?.color} fillOpacity={tool === "regiao" ? data.regionOpacity : 0.6} stroke={tool === "apagar" ? "var(--foreground)" : "none"} strokeOpacity={tool === "apagar" ? 0.55 : 0} strokeWidth={tool === "apagar" ? 0.75 : 0} pointerEvents="none" visibility={mode === "edit" ? "visible" : "hidden"} />
           {data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= 0.35) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
           {layers.comments && (!isLiveMap || mode !== "view" || view.z >= 0.4) && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
