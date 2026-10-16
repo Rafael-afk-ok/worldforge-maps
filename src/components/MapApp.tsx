@@ -406,26 +406,38 @@ export default function MapApp() {
   const finishPaint = () => {
     const pending = pendingPaint.current;
     if (pending.size) {
-      const tiles = { ...data.tiles };
       const existingRegionTiles = data.regionTiles ?? {};
-      let regionTiles: Record<string, string> | undefined;
-      for (const [cell, value] of pending) {
-        if (value.nationId === null) delete tiles[cell]; else tiles[cell] = value.nationId;
-        const previousRegion = existingRegionTiles[cell];
-        if (previousRegion !== value.regionId) {
-          regionTiles ??= { ...existingRegionTiles };
-          if (value.regionId === null) delete regionTiles[cell]; else regionTiles[cell] = value.regionId;
-        }
-      }
-      const changes: [string, string | null, string | null][] = [];
+      const changedNationCells: [string, string | null][] = [];
+      const changedRegionCells: [string, string | null][] = [];
+
+      // Find actual changes first. If the stroke paints the same values, avoid
+      // cloning large map objects and creating a redundant history snapshot.
       for (const [cell, value] of pending) {
         const previousNation = data.tiles[cell] ?? null;
-        if (previousNation !== value.nationId) changes.push([cell, previousNation, value.nationId]);
+        if (previousNation !== value.nationId) changedNationCells.push([cell, value.nationId]);
+        const previousRegion = existingRegionTiles[cell] ?? null;
+        if (previousRegion !== value.regionId) changedRegionCells.push([cell, value.regionId]);
       }
-      const nextData = { ...data, tiles, regionTiles: regionTiles ?? data.regionTiles };
-      pendingTileIndexUpdate.current = { from: data.tiles, to: tiles, changes };
-      setData(nextData);
-      pushHistory(nextData);
+
+      if (changedNationCells.length || changedRegionCells.length) {
+        const tiles = changedNationCells.length ? { ...data.tiles } : data.tiles;
+        const regionTiles = changedRegionCells.length ? { ...existingRegionTiles } : data.regionTiles;
+        for (const [cell, nationId] of changedNationCells) {
+          if (nationId === null) delete tiles[cell]; else tiles[cell] = nationId;
+        }
+        if (regionTiles) {
+          for (const [cell, regionId] of changedRegionCells) {
+            if (regionId === null) delete regionTiles[cell]; else regionTiles[cell] = regionId;
+          }
+        }
+        const changes = changedNationCells.map(([cell, nextNation]) => [cell, data.tiles[cell] ?? null, nextNation] as [string, string | null, string | null]);
+        const nextData = { ...data, tiles, regionTiles };
+        if (changedNationCells.length) {
+          pendingTileIndexUpdate.current = { from: data.tiles, to: tiles, changes };
+        }
+        setData(nextData);
+        pushHistory(nextData);
+      }
     }
     pending.clear();
     if (previewFrame.current !== null) {
