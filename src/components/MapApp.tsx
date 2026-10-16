@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { FloatingWindow } from "@/components/FloatingWindow";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Maximize, Minimize, Menu, X, Scan, Download, Upload, RotateCcw, Trash2, Settings, Users, Coins, Undo, Redo, History, BarChart3, Smartphone, Wheat, Layers, GitCompareArrows, GraduationCap, Eye, Pencil, Hand, Paintbrush, PaintBucket, Eraser, MapPinned, MessageSquare, Star, Building2, Shield, Anchor, Route, Waves } from "lucide-react";
-import { strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
+import { cellsPath, strokeCells, floodFill, territoryPath, expandTiles, MAP_COLS, MAP_ROWS, MAP_CELL } from "@/lib/map-tools";
 import { DICTS, LANGS, type Lang } from "@/lib/i18n";
 import { locationPhotos, locationTotals, safeMediaUrl } from "@/lib/map-entities";
 import { PhotoGallery } from "@/components/PhotoGallery";
@@ -457,7 +457,8 @@ export default function MapApp() {
       if (pts.length >= 2 && a && b && initial) { const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)); const z = Math.max(0.05, Math.min(4, initial.zoom * distance / initial.distance)); const midX = (a.x + b.x) / 2 - (bounds?.left ?? 0), midY = (a.y + b.y) / 2 - (bounds?.top ?? 0); setView({ z, x: midX - initial.worldX * z, y: midY - initial.worldY * z }); return; }
     }
     const [wx, wy] = toWorld(e.clientX, e.clientY);
-    setCursorPos({ x: (Math.floor(wx / CELL) + 0.5) * CELL, y: (Math.floor(wy / CELL) + 0.5) * CELL });
+    const nextCursor = { x: (Math.floor(wx / CELL) + 0.5) * CELL, y: (Math.floor(wy / CELL) + 0.5) * CELL };
+    setCursorPos(previous => previous?.x === nextCursor.x && previous?.y === nextCursor.y ? previous : nextCursor);
     const d = drag.current; if (!d) return;
     if (d.mode === "pan") setView(v => ({ ...v, x: d.vx + e.clientX - d.sx, y: d.vy + e.clientY - d.sy }));
     else if (d.mode === "paint") paint(e.clientX, e.clientY);
@@ -976,7 +977,7 @@ export default function MapApp() {
 
       <div ref={ref} aria-label={t.mapLabel} className="relative min-w-0 flex-1 touch-none select-none overflow-hidden bg-muted"
         style={{ cursor: tool === "mover" ? "grab" : "crosshair" }}
-        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={e => { if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); if (touchPoints.current.size < 2) pinchStart.current = null; } stopDrag(); }} onPointerCancel={e => { if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); pinchStart.current = null; } stopDrag(); }} onLostPointerCapture={stopDrag} onPointerLeave={() => setCursorPos(null)}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={e => { if (drag.current?.mode === "paint") paint(e.clientX, e.clientY); if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); if (touchPoints.current.size < 2) pinchStart.current = null; } stopDrag(); }} onPointerCancel={e => { if (e.pointerType === "touch") { touchPoints.current.delete(e.pointerId); pinchStart.current = null; } stopDrag(); }} onLostPointerCapture={stopDrag} onPointerLeave={() => setCursorPos(null)}
         onDoubleClick={finishLine} onContextMenu={e => e.preventDefault()}>
         <svg className="absolute left-0 top-0 overflow-visible" width={W} height={H}
           style={{ transform: `translate(${view.x}px,${view.y}px) scale(${view.z})`, transformOrigin: "0 0" }}>
@@ -986,14 +987,7 @@ export default function MapApp() {
           <defs><pattern id="g" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><path d={`M${CELL} 0H0V${CELL}`} fill="none" className="stroke-border" strokeWidth={0.5} /></pattern></defs>
           {layers.territories && territories.filter(t => visibleNationIds.has(t.nation.id)).map(t => { const alliance = filter === "alianças" ? alliances.find(a => a.nationIds.includes(t.nation.id)) : undefined; return <path key={t.nation.id} data-territory={t.nation.id} d={t.path} fill={alliance?.color ?? t.nation.color} fillRule="evenodd" opacity={selNation?.id === t.nation.id ? 0.85 : 0.6} />; })}
           {showRegions && layers.territories && regionTerritories.filter(item => visibleNationIds.has(item.region.nationId) && item.keys.length > 0).map(({ region, path }) => <g key={`region-${region.id}`} pointerEvents="none"><path data-region={region.id} d={path} fill={region.color} fillOpacity={data.regionOpacity ?? 0.45} stroke={region.color} strokeOpacity={data.regionOpacity ?? 0.45} strokeWidth={2} vectorEffect="non-scaling-stroke" fillRule="evenodd" /><title>{region.name}</title></g>)}
-          {previewPaintCells.map(cell => {
-            const [x = 0, y = 0] = cell.split(",").map(Number);
-            const pending = pendingPaint.current.get(cell);
-            const region = pending?.regionId ? (data.regions ?? []).find(item => item.id === pending.regionId) : undefined;
-            const nation = pending?.nationId ? nationById(pending.nationId) : undefined;
-            const fill = tool === "regiao" ? (region?.color ?? nation?.color ?? "var(--background)") : (nation?.color ?? "var(--background)");
-            return <rect key={`paint-preview-${cell}`} x={x * CELL} y={y * CELL} width={CELL} height={CELL} fill={fill} fillOpacity={tool === "regiao" ? (data.regionOpacity ?? 0.45) : pending?.nationId ? 0.6 : 1} pointerEvents="none" />;
-          })}
+          {previewPaintCells.length > 0 && <path data-paint-preview d={cellsPath(previewPaintCells)} fill={tool === "regiao" ? selectedRegion?.color : tool === "apagar" ? "var(--background)" : nationById(brush ?? "")?.color} fillOpacity={tool === "regiao" ? data.regionOpacity : tool === "apagar" ? 1 : 0.6} pointerEvents="none" />}
           {data.showGrid && layers.grid && (!isLiveMap || mode !== "view" || view.z >= 0.35) && <rect width={W} height={H} fill="url(#g)" pointerEvents="none" />}
           
           {layers.comments && (!isLiveMap || mode !== "view" || view.z >= 0.4) && data.comments.map(comment => <text key={comment.id} x={comment.x} y={comment.y} textAnchor="middle" fontSize={comment.size ?? 18} fontFamily={comment.fontFamily ?? "Arial"} fontWeight={600} fill={comment.color ?? "var(--foreground)"} opacity={selComment?.id === comment.id ? 1 : 0.95} transform={`rotate(${comment.rotation ?? 0} ${comment.x} ${comment.y})`} paintOrder="stroke" stroke="var(--background)" strokeWidth={4} style={{ cursor: tool === "mover" ? "move" : "pointer", userSelect: "none" }} onPointerDown={e => { if (mode === "view") { e.stopPropagation(); return; } if (tool === "mover") { e.stopPropagation(); ref.current?.setPointerCapture(e.pointerId); setSel({ kind: "comment", id: comment.id }); drag.current = { mode: "entity", entityKind: "comment", id: comment.id, sx: e.clientX, sy: e.clientY, wx: comment.x, wy: comment.y }; } else if (tool === "apagar") { e.stopPropagation(); setData(d => ({ ...d, comments: d.comments.filter(c => c.id !== comment.id) })); } }}>{comment.text}</text>)}
@@ -1046,14 +1040,7 @@ export default function MapApp() {
             );
           })}
           {layers.labels && filter === "alianças" && alliances.map(a => { const members = territories.filter(t => a.nationIds.includes(t.nation.id) && t.keys.length > 0); const count = members.reduce((sum, t) => sum + t.keys.length, 0); if (!count) return null; const x = members.reduce((sum, t) => sum + t.centerX * t.keys.length, 0) / count, y = members.reduce((sum, t) => sum + t.centerY * t.keys.length, 0) / count; return <g key={a.id} pointerEvents="none">{a.image && <image href={a.image} x={x - 24} y={y - 54} width={48} height={32} preserveAspectRatio="xMidYMid meet" />}<text x={x} y={y} textAnchor="middle" fontSize={Math.max(12, Math.min(28, 10 + Math.sqrt(count) * 0.12))} className="fill-foreground font-display uppercase" paintOrder="stroke" stroke="var(--background)" strokeWidth={4}>{a.name}</text></g>; })}
-          {cursorPos && (tool === "pintar" || tool === "apagar") && (
-            <circle cx={cursorPos.x} cy={cursorPos.y}
-              r={Math.max(CELL / 2, (brushSize - 0.5) * CELL)}
-              fill={tool === "apagar" ? "#ef4444" : (brush ? nationById(brush)?.color ?? "#ffffff" : "#ffffff")}
-              fillOpacity={0.08}
-              stroke={tool === "apagar" ? "#ef4444" : (brush ? nationById(brush)?.color ?? "#ffffff" : "#ffffff")}
-              strokeOpacity={0.9} strokeWidth={1.5} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-          )}
+          {mode === "edit" && cursorPos && (tool === "pintar" || tool === "apagar" || tool === "regiao") && <path data-brush-cursor d={cellsPath(strokeCells([cursorPos.x / CELL, cursorPos.y / CELL], [cursorPos.x / CELL, cursorPos.y / CELL], brushSize - 1))} fill={tool === "apagar" ? "var(--destructive)" : tool === "regiao" ? selectedRegion?.color : nationById(brush ?? "")?.color ?? "var(--primary)"} fillOpacity={0.25} pointerEvents="none" />}
         </svg>
 
         <div className="map-toolbar" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
