@@ -1100,7 +1100,6 @@ export default function MapApp() {
                 <text y={isCapital ? 18 : 14} textAnchor="middle" fontSize={m.labelSize ?? (isCapital ? 12 : 10)} className="fill-foreground font-display" paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{m.name}</text>
               </g>
             );
-            });
           })}
 
           {/* Nomes dos países com tamanho dinâmico pelo território e limite de zoom */}
