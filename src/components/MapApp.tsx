@@ -1092,10 +1092,15 @@ export default function MapApp() {
             const clampedFontSize = Math.max(10, Math.min(baseFontSize, Math.round(baseFontSize * Math.min(1, Math.max(0.4, view.z * 1.4)))));
             const flagScale = clampedFontSize / 24;
 
+            const nameParts = n.name.trim().split(/\s+/);
+            const hasTwoLines = nameParts.length > 1;
+            const firstLine = hasTwoLines ? nameParts.slice(0, -1).join(" ") : n.name;
+            const secondLine = hasTwoLines ? nameParts[nameParts.length - 1] : "";
             return (
               <g key={n.id} pointerEvents="none">
-                {n.flag && <image href={n.flag} x={x - 20 * flagScale} y={y - 36 * flagScale} width={40 * flagScale} height={24 * flagScale} preserveAspectRatio="xMidYMid meet" />}
-                <text x={x} y={y} textAnchor="middle" fontSize={clampedFontSize} className="fill-foreground font-display uppercase" opacity={0.85} paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{n.name}</text>
+                {n.flag && <image href={n.flag} x={x - 20 * flagScale} y={y - (hasTwoLines ? 42 : 36) * flagScale} width={40 * flagScale} height={24 * flagScale} preserveAspectRatio="xMidYMid meet" />}
+                <text x={x} y={y - (hasTwoLines ? clampedFontSize * 0.3 : 0)} textAnchor="middle" fontSize={clampedFontSize} className="fill-foreground font-display uppercase" opacity={0.85} paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{firstLine}</text>
+                {hasTwoLines && <text x={x} y={y + clampedFontSize * 0.85} textAnchor="middle" fontSize={clampedFontSize} className="fill-foreground font-display uppercase" opacity={0.85} paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{secondLine}</text>}
               </g>
             );
           })}
