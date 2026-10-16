@@ -283,3 +283,23 @@ body { font-family: var(--font-sans); font-size: 14px; }
 .viewer-menu { width: 300px; }
 .inspector-tabs .inspector-tab[aria-selected="false"] { background: transparent; color: var(--muted-foreground); }
 .inspector-tabs .inspector-tab[aria-selected="true"] { border-bottom-color: var(--primary); background: var(--accent); color: var(--primary); }
+.viewer-menu { width: 340px; gap: 16px; }
+.viewer-navigation { display: flex; justify-content: space-between; flex-shrink: 0; border-block: 1px solid var(--border); padding-block: 8px; }
+.viewer-entry { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 14px 4px; gap: 0; }
+.entity-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.photo-gallery { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.gallery-photo { padding: 0; width: 100%; height: auto; aspect-ratio: 4 / 3; overflow: hidden; }
+.gallery-photo img { width: 100%; height: 100%; object-fit: cover; }
+.photo-lightbox { position: fixed; inset: 0; z-index: 150; background: color-mix(in oklab,var(--background) 96%,transparent); display: flex; align-items: center; justify-content: center; padding: 48px 20px; }
+.photo-lightbox > button { position: absolute; top: 12px; right: 12px; }
+.photo-lightbox > img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.anthem-video { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 6px; }
+.comparison-scroll { overflow: auto; max-height: 50dvh; }
+.comparison-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.comparison-table th,.comparison-table td { text-align: left; min-width: 115px; padding: 12px; border-bottom: 1px solid var(--border); }
+.comparison-table th { font-weight: 600; background: var(--card); }
+.comparison-table tbody th { position: sticky; left: 0; }
+.comparison-table td { font-variant-numeric: tabular-nums; }
+.diplomacy-editor > p { display: none; }
+.diplomacy-editor[data-section="relations"] > :is(.diplomacy-alliances,.diplomacy-wars),.diplomacy-editor[data-section="alliances"] > :is(.diplomacy-relations,.diplomacy-wars),.diplomacy-editor[data-section="wars"] > :is(.diplomacy-alliances,.diplomacy-relations) { display: none; }
+@media (max-width: 600px) { .viewer-menu { width: min(340px,calc(100vw - 24px)); } }
