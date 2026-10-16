@@ -847,7 +847,7 @@ export default function MapApp() {
       keys.push(key);
       keysByNation.set(nationId, keys);
     }
-    const geometry = new Map<string, { keys: string[]; centerX: number; centerY: number; path: string }>();
+    const geometry = new Map<string, { keys: string[]; centerX: number; centerY: number; path: string; components: { keys: string[]; centerX: number; centerY: number }[] }>();
     const cache = territoryPathCache.current;
     const activeNationIds = new Set(keysByNation.keys());
     for (const nationId of cache.keys()) if (!activeNationIds.has(nationId)) cache.delete(nationId);
@@ -858,7 +858,30 @@ export default function MapApp() {
       const unchanged = previous && previous.smooth === data.smooth && previous.keys.length === keys.length && previous.keys.every((key, index) => key === keys[index]);
       const path = unchanged ? previous.path : territoryPath(keys, data.smooth);
       if (!unchanged) cache.set(nationId, { keys, smooth: data.smooth, path });
-      geometry.set(nationId, { keys, centerX: sx / keys.length, centerY: sy / keys.length, path });
+
+      // Divide o território em massas conectadas de células para repetir o nome em ilhas e enclaves separados.
+      const remaining = new Set(keys);
+      const components: { keys: string[]; centerX: number; centerY: number }[] = [];
+      while (remaining.size) {
+        const start = remaining.values().next().value as string;
+        remaining.delete(start);
+        const stack = [start];
+        const componentKeys: string[] = [];
+        let cx = 0, cy = 0;
+        while (stack.length) {
+          const current = stack.pop()!;
+          componentKeys.push(current);
+          const [px = 0, py = 0] = current.split(",").map(Number);
+          cx += (px + 0.5) * CELL;
+          cy += (py + 0.5) * CELL;
+          for (const neighbor of [`${px - 1},${py}`, `${px + 1},${py}`, `${px},${py - 1}`, `${px},${py + 1}`]) {
+            if (remaining.delete(neighbor)) stack.push(neighbor);
+          }
+        }
+        components.push({ keys: componentKeys, centerX: cx / componentKeys.length, centerY: cy / componentKeys.length });
+      }
+      components.sort((a, b) => b.keys.length - a.keys.length);
+      geometry.set(nationId, { keys, centerX: sx / keys.length, centerY: sy / keys.length, path, components });
     }
     return geometry;
   }, [data.tiles, data.smooth]);
@@ -1077,16 +1100,19 @@ export default function MapApp() {
                 <text y={isCapital ? 18 : 14} textAnchor="middle" fontSize={m.labelSize ?? (isCapital ? 12 : 10)} className="fill-foreground font-display" paintOrder="stroke" stroke="var(--background)" strokeWidth={3}>{m.name}</text>
               </g>
             );
+            });
           })}
 
           {/* Nomes dos países com tamanho dinâmico pelo território e limite de zoom */}
           {showRegionNames && layers.labels && (!isLiveMap || mode !== "view" || view.z >= 0.45) && regionTerritories.filter(item => visibleNationIds.has(item.region.nationId) && item.keys.length > 0 && (!isLiveMap || mode !== "view" || item.keys.length >= 4)).map(({ region, keys, centerX, centerY }) => <text key={`region-label-${region.id}`} x={centerX} y={centerY} textAnchor="middle" fontSize={Math.max(8, Math.min(16, 8 + Math.sqrt(keys.length) * 0.12))} fontWeight={700} fill="var(--foreground)" paintOrder="stroke" stroke="var(--background)" strokeWidth={3} pointerEvents="none">{region.name}</text>)}
-          {showNationNames && layers.labels && filter !== "alianças" && (!isLiveMap || mode !== "view" || view.z >= 0.2) && territories.filter(t => visibleNationIds.has(t.nation.id)).map(({ nation: n, keys: ks, centerX, centerY }) => {
+          {showNationNames && layers.labels && filter !== "alianças" && (!isLiveMap || mode !== "view" || view.z >= 0.2) && territories.filter(t => visibleNationIds.has(t.nation.id)).map(({ nation: n, keys: ks, centerX, centerY, components = [] }) => {
             if (!ks.length || (isLiveMap && mode === "view" && view.z < 0.35 && ks.length < 20)) return null;
-            const x = centerX, y = centerY;
+            const nameLocations = components.length ? components.filter((component, index) => index === 0 || component.keys.length >= 4) : [{ keys: ks, centerX, centerY }];
+            return nameLocations.map((component, index) => {
+            const x = component.centerX, y = component.centerY;
 
             // Escala conforme tamanho da área territorial (com teto para não ficar gigante)
-            const area = ks.length;
+            const area = component.keys.length;
             const baseFontSize = Math.max(12, Math.min(36, Math.round(10 + Math.sqrt(area) * 0.12)));
             // Quando a visualização estiver de longe, comprime a escala para manter o mapa legível
             const clampedFontSize = Math.max(10, Math.min(baseFontSize, Math.round(baseFontSize * Math.min(1, Math.max(0.4, view.z * 1.4)))));
