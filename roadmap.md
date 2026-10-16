@@ -10,3 +10,9 @@
 - [x] Janelas móveis de países e locais com abas e fotos.
 - [x] Ferramentas inferiores com ícones e status alternável.
 - [x] Verificar edição e visualização no navegador.
+- [ ] Melhorar visualização, diplomacia e dicas dos botões.
+- [ ] Corrigir precisão do pincel e otimizar pintura.
+- [ ] Fichas de regiões com bandeiras opcionais e hinos por link nos países.
+- [ ] Múltiplas fotos, vínculo de locais e galeria de cidades nos países.
+- [ ] Comparações de países e cidades com totais agregados.
+- [ ] Verificar os novos fluxos e compatibilidade.
