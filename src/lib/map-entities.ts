@@ -3,7 +3,7 @@ export function locationPhotos(location: LocationData): string[] {
   return [...new Set([...(location.photo ? [location.photo] : []), ...(location.photos ?? [])])];
 }
 export function locationTotals(locations: LocationData[]) {
-  return locations.reduce((total, item) => ({
+  return locations.reduce<{ population: number; income: number; expenses: number; foodProduction: number; foodConsumption: number; locations: number }>((total, item) => ({
     population: total.population + (item.npcs ?? 0),
     income: total.income + (item.grossIncome ?? 0),
     expenses: total.expenses + (item.expenses ?? 0),

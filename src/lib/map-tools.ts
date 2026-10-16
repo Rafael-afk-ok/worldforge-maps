@@ -2,6 +2,18 @@ export const MAP_COLS = 1200;
 export const MAP_ROWS = 800;
 export const MAP_CELL = 2;
 
+/** Compact square subpaths for previews and the exact discrete brush footprint. */
+export function cellsPath(keys: Iterable<string>) {
+  let path = '';
+  for (const key of keys) {
+    const comma = key.indexOf(',');
+    const x = Number(key.slice(0, comma)) * MAP_CELL;
+    const y = Number(key.slice(comma + 1)) * MAP_CELL;
+    path += `M${x},${y}h${MAP_CELL}v${MAP_CELL}h-${MAP_CELL}Z`;
+  }
+  return path;
+}
+
 /** Older maps used larger tiles; split each old tile into factor×factor new tiles. */
 export function expandTiles(tiles: Record<string, string>, factor: number) {
   if (factor <= 1) return { ...tiles };
