@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { cellsPath, expandTiles, strokeCells, territoryPath } from './map-tools';
+import { cellsPath, countTileValues, expandTiles, strokeCells, territoryPath } from './map-tools';
+
+describe('tile counts', () => {
+  it('counts cell assignments by ID', () => {
+    expect(countTileValues({ '0,0': 'a', '1,0': 'a', '2,0': 'b' })).toEqual(new Map([['a', 2], ['b', 1]]));
+    expect(countTileValues({})).toEqual(new Map());
+  });
+});
 
 describe('map painting', () => {
   it('renders the exact brush cells without offset or diagonal extras', () => {
