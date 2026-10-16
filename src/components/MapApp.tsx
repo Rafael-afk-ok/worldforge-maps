@@ -829,7 +829,7 @@ export default function MapApp() {
       for (const key of keys) { const [x = 0, y = 0] = key.split(",").map(Number); sx += (x + 0.5) * CELL; sy += (y + 0.5) * CELL; }
       return { region, keys, centerX: keys.length ? sx / keys.length : 0, centerY: keys.length ? sy / keys.length : 0, path: keys.length ? territoryPath(keys, data.smooth) : "" };
     });
-  }, [data.regions, data.regionTiles, data.tiles, data.smooth]);
+  }, [data.regions, data.regionTiles, data.smooth]);
   const worldStats = useMemo(() => data.markers.reduce((a, m) => ({ population: a.population + (m.npcs ?? 0), income: a.income + (m.grossIncome ?? 0), expenses: a.expenses + (m.expenses ?? 0), foodProduction: a.foodProduction + (m.foodProduction ?? 0), foodConsumption: a.foodConsumption + (m.foodConsumption ?? 0) }), { population: 0, income: 0, expenses: 0, foodProduction: 0, foodConsumption: 0 }), [data.markers]);
   const worldBalance = worldStats.income - worldStats.expenses;
   const foodBalance = worldStats.foodProduction - worldStats.foodConsumption;
