@@ -189,6 +189,15 @@ export default function MapApp() {
   const importRef = useRef<HTMLInputElement>(null);
   const lastPaint = useRef<[number, number] | null>(null);
   const pendingPaint = useRef(new Map<string, { nationId: string | null; regionId: string | null }>());
+  const pendingTileIndexUpdate = useRef<{
+    from: Record<string, string>;
+    to: Record<string, string>;
+    changes: [string, string | null, string | null][];
+  } | null>(null);
+  const territoryTileIndex = useRef<{
+    tiles: Record<string, string>;
+    keysByNation: Map<string, Set<string>>;
+  } | null>(null);
   const previewFrame = useRef<number | null>(null);
   const regionById = useMemo(() => new Map((data.regions ?? []).map(region => [region.id, region] as const)), [data.regions]);
   const selectedRegion = useMemo(() => (data.regions ?? []).find(region => region.id === selectedRegionId), [data.regions, selectedRegionId]);
@@ -403,7 +412,13 @@ export default function MapApp() {
         if (value.nationId === null) delete tiles[cell]; else tiles[cell] = value.nationId;
         if (value.regionId === null) delete regionTiles[cell]; else regionTiles[cell] = value.regionId;
       }
+      const changes: [string, string | null, string | null][] = [];
+      for (const [cell, value] of pending) {
+        const previousNation = data.tiles[cell] ?? null;
+        if (previousNation !== value.nationId) changes.push([cell, previousNation, value.nationId]);
+      }
       const nextData = { ...data, tiles, regionTiles };
+      pendingTileIndexUpdate.current = { from: data.tiles, to: tiles, changes };
       setData(nextData);
       pushHistory(nextData);
     }
@@ -851,12 +866,47 @@ export default function MapApp() {
     components: { keys: string[]; centerX: number; centerY: number }[];
   }>());
   const territoryGeometry = useMemo(() => {
-    const keysByNation = new Map<string, string[]>();
-    for (const [key, nationId] of Object.entries(data.tiles)) {
-      const keys = keysByNation.get(nationId) ?? [];
-      keys.push(key);
-      keysByNation.set(nationId, keys);
+    const tileIndex = territoryTileIndex.current;
+    const pendingUpdate = pendingTileIndexUpdate.current;
+    let indexedTiles: Map<string, Set<string>>;
+    if (tileIndex?.tiles === data.tiles) {
+      indexedTiles = tileIndex.keysByNation;
+    } else if (tileIndex && pendingUpdate?.from === tileIndex.tiles && pendingUpdate.to === data.tiles) {
+      // A brush stroke tells us exactly which cells changed, so update only affected nation sets.
+      indexedTiles = new Map(tileIndex.keysByNation);
+      const writableNations = new Set<string>();
+      const writableSet = (nationId: string) => {
+        let cells = indexedTiles.get(nationId);
+        if (!writableNations.has(nationId)) {
+          cells = new Set(cells);
+          indexedTiles.set(nationId, cells);
+          writableNations.add(nationId);
+        }
+        return cells!;
+      };
+      for (const [cell, previousNation, nextNation] of pendingUpdate.changes) {
+        if (previousNation) {
+          const cells = writableSet(previousNation);
+          cells.delete(cell);
+          if (!cells.size) indexedTiles.delete(previousNation);
+        }
+        if (nextNation) writableSet(nextNation).add(cell);
+      }
+      territoryTileIndex.current = { tiles: data.tiles, keysByNation: indexedTiles };
+      pendingTileIndexUpdate.current = null;
+    } else {
+      // Non-brush edits (undo, import, fill, etc.) safely rebuild the index from the source map.
+      indexedTiles = new Map<string, Set<string>>();
+      for (const [key, nationId] of Object.entries(data.tiles)) {
+        let cells = indexedTiles.get(nationId);
+        if (!cells) { cells = new Set<string>(); indexedTiles.set(nationId, cells); }
+        cells.add(key);
+      }
+      territoryTileIndex.current = { tiles: data.tiles, keysByNation: indexedTiles };
+      if (pendingUpdate?.to === data.tiles) pendingTileIndexUpdate.current = null;
     }
+    const keysByNation = new Map<string, string[]>();
+    for (const [nationId, cells] of indexedTiles) keysByNation.set(nationId, [...cells]);
     const geometry = new Map<string, { keys: string[]; centerX: number; centerY: number; path: string; components: { keys: string[]; centerX: number; centerY: number }[] }>();
     const cache = territoryPathCache.current;
     const activeNationIds = new Set(keysByNation.keys());
